@@ -15,14 +15,12 @@ class SpectralDerivatives:
 
         ## Compute wavenumbers for first derivatives
         # Derivative in y
-        self.ky = torch.reshape(
-            torch.from_numpy(np.fft.fftfreq(grid.Ny, grid.Ly / (grid.Ny * 2 * math.pi))), 
+        self.ky = torch.reshape((torch.fft.fftfreq(grid.Ny, grid.Ly / (grid.Ny * 2 * math.pi))), 
             (grid.Ny, 1)
         ).to(self.device) 
         
         # Derivative in x
-        self.kr = torch.reshape(
-            torch.from_numpy(np.fft.rfftfreq(grid.Nx, grid.Lx / (grid.Nx * 2 * math.pi))), 
+        self.kr = torch.reshape((torch.fft.rfftfreq(grid.Nx, grid.Lx / (grid.Nx * 2 * math.pi))), 
             (1, self.dk)
         ).to(self.device)
 

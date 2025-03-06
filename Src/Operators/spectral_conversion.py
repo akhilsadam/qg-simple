@@ -6,13 +6,13 @@ def to_physical(spectral_field):
     """
     Convert a spectral field to physical space (inverse FFT).
     """
-    return torch.fft.irfftn(spectral_field)
+    return torch.fft.irfftn(spectral_field,norm='forward')
 
 def to_spectral(physical_field):
     """
     Convert a physical field to spectral space (FFT).
     """
-    return torch.fft.rfftn(physical_field)
+    return torch.fft.rfftn(physical_field,norm='forward')
 
 
 def dealias(y, spectral_derivative, dealias_factor=1/3):
