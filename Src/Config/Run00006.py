@@ -14,9 +14,9 @@ class time_params:
 class pde_params:
     mu = 0 #(Linear drag)
     nu = 3.125e-5  #(Viscosity coefficient)
-    B = 0  #(Beta plane)
+    B = 0  #(Vicosity)
     nv = 1 #(Hyperviscous order)
-    penalty_coeff=5*time_params.dt  # (Brinkman penalty parameter)
+    penalty_coeff=1.25*time_params.dt  # (Brinkman penalty parameter)
     
 class ic_params:
     energy= 0.01
@@ -34,4 +34,4 @@ class params:
     pde = pde_params
     ic = ic_params
     mask = mask_params
-    run_number = 3
+    run_number = 6

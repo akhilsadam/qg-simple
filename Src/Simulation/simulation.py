@@ -7,8 +7,7 @@ from Time_marching.imex_schemes import backward_euler, CN2, AB2
 
 
 class Simulation:
-    def __init__(self, grid, params, spectral_derivative, linear_operator, nonlinear_operator, initial_condition, mask=None, forcing=None,
-                 dt=1e-3, T=100000*1e-3):
+    def __init__(self, grid, params, spectral_derivative, linear_operator, nonlinear_operator, initial_condition, time_params, mask=None, forcing=None):
         """
         Initialize the simulation parameters.
         """
@@ -21,11 +20,12 @@ class Simulation:
         self.initial_condition = initial_condition
         self.xi = mask # Xi is the mask variable
         self.forcing = forcing
-        self.dt = dt
-        self.T = T
+        self.dt = time_params.dt
+        self.T = time_params.T
+        self.save_interval=time_params.save_int
         self.Nx, self.Ny = grid.Nx, grid.Ny  # Grid resolution
-        self.steps = int(T / dt)  # Number of time steps
-        self.q_sol = torch.zeros([self.Nx, self.Ny, self.steps], dtype=torch.float32)
+        self.steps = int(self.T / self.dt)  # Number of time steps
+        self.q_sol = torch.zeros([self.Nx, self.Ny, int(self.steps/self.save_interval)+1]) # Initialize for only the save times
         self.q_sol[:, :, 0] = to_physical(initial_condition)
         
     def time_step(self):
@@ -34,7 +34,12 @@ class Simulation:
         xi = self.xi
 
         for it_count in range(self.steps - 1):
-            q_sol_h_1 = to_spectral(self.q_sol[:, :, it_count].squeeze()).cuda()
+            
+            # Handle initial conditions
+            if it_count == 0:
+                q_sol_h_1 = to_spectral(self.q_sol[:, :, it_count].squeeze()).cuda()
+            else:
+                q_sol_h_1 = ans
 
             # Initialize source term
             source = q_sol_h_1
@@ -44,7 +49,7 @@ class Simulation:
                 source_jacobian = backward_euler(self.nonlinear_operator.jacobian_pq(q_sol_h_1), dt)
                 source_brinkman = backward_euler(self.nonlinear_operator.brinkman_penalty(xi,q_sol_h_1), dt)
             else:
-                q_sol_h_2 = to_spectral(self.q_sol[:, :, it_count - 1].squeeze()).cuda()
+                #q_sol_h_2 = to_spectral(self.q_sol[:, :, it_count - 1].squeeze()).cuda()
                 source_jacobian = AB2(self.nonlinear_operator.jacobian_pq(q_sol_h_1), 
                                       self.nonlinear_operator.jacobian_pq(q_sol_h_2), dt)
                 source_brinkman = AB2(self.nonlinear_operator.brinkman_penalty(xi,q_sol_h_1),
@@ -59,9 +64,14 @@ class Simulation:
             # Apply the linear operator inversion
             operator = (1 - op_lin).cuda()
             ans = source / operator
+            
+            # Store input as term 2 for AB and CN
+            q_sol_h_2=q_sol_h_1
 
-            # Convert back to physical space and store the result
-            self.q_sol[:, :, it_count + 1] = to_physical(ans)
+            # Convert back to physical space and store the result for every save interval
+            if (it_count+1) % self.save_interval == 0:
+                save_index = (it_count + 1) // self.save_interval
+                self.q_sol[:, :, save_index] = to_physical(ans)
 
     def run(self):
         """Run the full simulation."""

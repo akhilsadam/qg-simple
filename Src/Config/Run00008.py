@@ -8,13 +8,13 @@ class grid_params:
     
 class time_params:
     dt= 1e-3
-    T = 100001 *dt 
+    T = 100001 *dt
     save_int=500 #(Frequency of .np saves and plots)
     
 class pde_params:
     mu = 0 #(Linear drag)
     nu = 3.125e-5  #(Viscosity coefficient)
-    B = 0  #(Beta plane)
+    B = 0  #(Vicosity)
     nv = 1 #(Hyperviscous order)
     penalty_coeff=5*time_params.dt  # (Brinkman penalty parameter)
     
@@ -26,7 +26,7 @@ class ic_params:
 class mask_params:
     option = 1 # 1 is circular mask
     r = math.pi/4
-    tol = 1e-3
+    tol = 1e-9
             
 class params:
     grid = grid_params
@@ -34,4 +34,4 @@ class params:
     pde = pde_params
     ic = ic_params
     mask = mask_params
-    run_number = 3
+    run_number = 8
