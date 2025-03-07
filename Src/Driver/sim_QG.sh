@@ -1,7 +1,7 @@
 #!/bin/sh
 
-runid_start=3  # Start value for runid (trained model num)
-runid_end=14  # End value for runid
+runid_start=22  # Start value for runid (trained model num)
+runid_end=31  # End value for runid
 
 
 for (( runid=${runid_start}; runid <= ${runid_end}; runid++ )); do
