@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 def vorticity_plots(field,timestep, time_params):
     fig, ax = plt.subplots()  # Create a figure and axis
 
-    cax = ax.imshow(field[:, :, timestep], cmap='seismic', origin='lower', vmax=10, vmin=-10, 
-                    extent=[0, 2*np.pi, 0, 2*np.pi])  # Set extent for correct scaling
+    cax = ax.imshow(field[:, :, timestep,0], cmap='seismic', origin='lower', vmax=10, vmin=-10, 
+                    extent=[0, 2*np.pi, 0, 2*np.pi])  # 0 is vorticity
 
     plt.colorbar(cax, ax=ax)
 
