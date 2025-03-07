@@ -1,0 +1,11 @@
+#!/bin/sh
+
+runid_start=3  # Start value for runid (trained model num)
+runid_end=10  # End value for runid
+
+
+for (( runid=${runid_start}; runid <= ${runid_end}; runid++ )); do
+    printf -v padded_m "%04d" "$runid"
+    qsub -N "SimQG${padded_m}" "SimQG" "${runid}"
+    sleep 3
+done
