@@ -90,6 +90,17 @@ print(f"Successfully created initial conditions and obstacles")
 now = datetime.datetime.now()
 print(now.strftime("%Y-%m-%d %H:%M:%S"))
 
+## Set-up forcing
+if config.params.forcing.option ==1:
+    print(f"Using cos forcing")
+    from Initial_forcing.forcing import cos_forcing
+    forcing_DNS = cos_forcing
+elif config.params.forcing.option ==0:
+    forcing_DNS = None
+    config.params.forcing=None
+else:
+    raise ValueError("Invalid forcing option. Check config.")
+
 ## Run simulation
 print(f"Simulation started")
 now = datetime.datetime.now()
@@ -98,7 +109,7 @@ print(now.strftime("%Y-%m-%d %H:%M:%S"))
 from Simulation.simulation import Simulation
 
 sim_DNS = Simulation(grid_DNS,config.params.pde,spec_deriv_DNS,linop_DNS,nonlinop_DNS,init_conds_DNS,config.params.time,
-                     obstacle_mask_DNS,None)
+                     config.params.forcing,obstacle_mask_DNS,forcing_DNS)
 
 solution_field = sim_DNS.run()
 

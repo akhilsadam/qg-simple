@@ -4,16 +4,16 @@ from Operators.spectral_conversion import to_physical, to_spectral, dealias
 
 # Generates forcing based on specified wavenumber and time effects
 
-def wind_forcing(grid,spectral_derivative,wind_params,t):
+def cos_forcing(grid,spectral_derivative,forcing_params,t):
     
     # Create a grid of coordinates (x, y)
-    x = np.linspace(0, grid.Lx, grid.Nx)
-    y = np.linspace(0, grid.Ly, grid.Ny)
+    x = torch.linspace(0, grid.Lx, grid.Nx,device=grid.device)
+    y = torch.linspace(0, grid.Ly, grid.Ny,device=grid.device)
 
     # Create meshgrid for x, y
-    X, Y = np.meshgrid(x, y)
+    X, Y = x[None,:],y[:,None]
     
-    w = wind_params.A * (np.cos(wind_params.B * X + wind_params.C * t)) + wind_params.D * (np.cos(wind_params.E * Y + wind_params.F * t))
+    w =  torch.tensor(forcing_params.A * (torch.cos(forcing_params.B * X + forcing_params.C * t)) + forcing_params.D * (torch.cos(forcing_params.E * Y + forcing_params.F * t)))
     
     wh = to_spectral(w)
     

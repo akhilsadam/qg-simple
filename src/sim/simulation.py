@@ -7,13 +7,14 @@ from Time_marching.imex_schemes import backward_euler, CN2, AB2
 
 
 class Simulation:
-    def __init__(self, grid, params, spectral_derivative, linear_operator, nonlinear_operator, initial_condition, time_params, mask=None, forcing=None):
+    def __init__(self, grid, pde_params, spectral_derivative, linear_operator, nonlinear_operator, initial_condition, time_params,
+                 forcing_params, mask=None, forcing=None):
         """
         Initialize the simulation parameters.
         """
         self.grid = grid
         self.device = grid.device
-        self.params = params
+        self.params = pde_params
         self.spectral_derivative = spectral_derivative
         self.linear_operator = linear_operator
         self.nonlinear_operator = nonlinear_operator
@@ -23,6 +24,7 @@ class Simulation:
         self.dt = time_params.dt
         self.T = time_params.T
         self.save_interval=time_params.save_int
+        self.forcing_params = forcing_params
         self.Nx, self.Ny = grid.Nx, grid.Ny  # Grid resolution
         self.steps = int(self.T / self.dt)  # Number of time steps
         self.q_sol = torch.zeros([self.Nx, self.Ny, int(self.steps/self.save_interval)+1,4]) # Initialize for only the save times
@@ -36,7 +38,6 @@ class Simulation:
         self.q_sol[:, :, 0,1] = to_physical(ph_temp) 
         self.q_sol[:, :, 0,2] = to_physical(uh_temp) 
         self.q_sol[:, :, 0,3] = to_physical(vh_temp) 
-        self.forcing = forcing
         self.t0=0.0
         
     def time_step(self):
@@ -59,17 +60,17 @@ class Simulation:
             if it_count == 0:
                 source_jacobian = backward_euler(self.nonlinear_operator.jacobian_pq(q_sol_h_1), dt)
                 source_brinkman = backward_euler(self.nonlinear_operator.brinkman_penalty(xi,q_sol_h_1), dt)
-                if forcing:
-                    term_forcing1 = forcing(self.grid,self.spectral_derivative,self.params.wind,self.t0+it_count*dt)
+                if self.forcing:
+                    term_forcing1 = self.forcing(self.grid,self.spectral_derivative,self.forcing_params,self.t0+it_count*dt)
                     source_forcing = backward_euler(term_forcing1, dt)
             else:
                 source_jacobian = AB2(self.nonlinear_operator.jacobian_pq(q_sol_h_1), 
                                       self.nonlinear_operator.jacobian_pq(q_sol_h_2), dt)
                 source_brinkman = AB2(self.nonlinear_operator.brinkman_penalty(xi,q_sol_h_1),
                                       self.nonlinear_operator.brinkman_penalty(xi,q_sol_h_2), dt)
-                if forcing:
-                    term_forcing1 = forcing(self.grid,self.spectral_derivative,self.params.wind,self.t0+it_count*dt)
-                    term_forcing2 = forcing(self.grid,self.spectral_derivative,self.params.wind,self.t0+(it_count-1)*dt)
+                if self.forcing:
+                    term_forcing1 = self.forcing(self.grid,self.spectral_derivative,self.forcing_params,self.t0+it_count*dt)
+                    term_forcing2 = self.forcing(self.grid,self.spectral_derivative,self.forcing_params,self.t0+(it_count-1)*dt)
                     source_forcing = AB2(term_forcing1,term_forcing2, dt)
 
             # Compute linear terms
@@ -78,7 +79,7 @@ class Simulation:
             # Update the source term
             source = source + source_lin + source_jacobian + source_brinkman
             
-            if forcing:
+            if self.forcing:
                  source = source + source_forcing
 
             # Apply the linear operator inversion

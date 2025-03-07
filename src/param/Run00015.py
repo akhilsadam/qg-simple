@@ -12,7 +12,7 @@ class time_params:
     save_int=500 #(Frequency of .np saves and plots)
     
 class pde_params:
-    mu = 0.0 #(Linear drag)
+    mu = 2e-2 #(Linear drag)
     nu = 1.025e-5  #(Viscosity coefficient)
     B = 2.195e2  #(Beta plane)
     nv = 1 #(Hyperviscous order)
@@ -28,11 +28,12 @@ class mask_params:
     r = math.pi/4
     tol = 1e-3
 
-class wind_params:
+class forcing_params:
+    option = 1 # 1 is cos forcing
     A=4
     B=4
     C=0
-    D=1
+    D=4
     E=4
     F=0
             
@@ -42,5 +43,5 @@ class params:
     pde = pde_params
     ic = ic_params
     mask = mask_params
-    wind = wind_params
-    run_number = 14
+    forcing = forcing_params
+    run_number = 15
