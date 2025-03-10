@@ -1,23 +1,6 @@
 import json
 import argparse
-import torch
-from torch.utils.data import Dataset, DataLoader
-import torch.nn as nn
-import torch.nn.functional as F
-import math
-import time
 import datetime
-import numpy as np
-import IPython.display as display
-from torchvision import datasets, transforms
-import matplotlib.pyplot as plt
-from typing import Tuple, Union, Optional, List
-from tqdm.notebook import tqdm
-import torch.optim as optim
-import dataclasses
-import matplotlib.patches as patches
-import matplotlib.ticker as ticker
-import os
 import sys
 import warnings
 import importlib
@@ -62,7 +45,7 @@ except ModuleNotFoundError:
 
 ## Set-up grid
 from Grid.grid import Grid
-grid_DNS=Grid(config.params.grid.Lx,config.params.grid.Ly,config.params.grid.Nx,config.params.grid.Ny)
+grid_DNS=Grid(**params.grid.__dict__())
 
 ## Set-up spectral derivatives and operators
 from Operators.operators import SpectralDerivatives, LinearOperator, NonlinearOperator
@@ -90,17 +73,6 @@ print(f"Successfully created initial conditions and obstacles")
 now = datetime.datetime.now()
 print(now.strftime("%Y-%m-%d %H:%M:%S"))
 
-## Set-up forcing
-if config.params.forcing.option ==1:
-    print(f"Using cos forcing")
-    from Initial_forcing.forcing import cos_forcing
-    forcing_DNS = cos_forcing
-elif config.params.forcing.option ==0:
-    forcing_DNS = None
-    config.params.forcing=None
-else:
-    raise ValueError("Invalid forcing option. Check config.")
-
 ## Run simulation
 print(f"Simulation started")
 now = datetime.datetime.now()
@@ -109,7 +81,7 @@ print(now.strftime("%Y-%m-%d %H:%M:%S"))
 from Simulation.simulation import Simulation
 
 sim_DNS = Simulation(grid_DNS,config.params.pde,spec_deriv_DNS,linop_DNS,nonlinop_DNS,init_conds_DNS,config.params.time,
-                     config.params.forcing,obstacle_mask_DNS,forcing_DNS)
+                     obstacle_mask_DNS,None)
 
 solution_field = sim_DNS.run()
 

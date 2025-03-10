@@ -6,8 +6,7 @@ def int_sq(y, grid):
     return Y * n
 
 # Generates initial conditions based on specified energy and wavenumber limits
-
-def init_randn(energy, wavenumbers, grid, spectral_derivative, seed=86):
+def _init_randn(energy, wavenumbers, grid, spectral_derivative, seed=86, **kwargs):
     torch.manual_seed(seed)
     
     # Use spectral_derivative for kr, ky, and krsq
@@ -29,5 +28,14 @@ def init_randn(energy, wavenumbers, grid, spectral_derivative, seed=86):
     
     # Scale to the desired energy
     qih *= torch.sqrt(E0 / Ei)
-    
     return qih
+
+####################################################################################################
+
+valid_ic = lambda _ic: isinstance(_ic, dict) and 'function' in _ic and _ic['function'] in ic_library
+
+ic_library = {
+    'randn': _init_randn,
+}
+
+solve_ic =  lambda _ic: ic_library[_ic['function']](**_ic) if valid_ic(_ic) else _ic

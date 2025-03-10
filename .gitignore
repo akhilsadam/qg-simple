@@ -1,3 +1,5 @@
-/Results/
+run/
 __pycache__
 **.ipynb
+wandb/
+lightning_logs/

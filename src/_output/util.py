@@ -2,7 +2,7 @@ import importlib
 import numpy as np
 import math
 import matplotlib.pyplot as plt
-from Plotting.plots import vorticity_plots
+from plot import vorticity_plots
 import os
 import torch
 import pickle

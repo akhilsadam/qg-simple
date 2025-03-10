@@ -2,10 +2,10 @@ import torch
 import numpy as np
 import math
 
-from Operators.spectral_conversion import to_physical, to_spectral, dealias
+from basis import to_physical, to_spectral, dealias
 
 ### Set up spectral derivatives (first and second derivatives)
-class SpectralDerivatives:
+class derivative:
     def __init__(self, grid):
         self.grid = grid
         self.device = grid.device
