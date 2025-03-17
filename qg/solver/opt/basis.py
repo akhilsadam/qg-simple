@@ -2,6 +2,27 @@ import torch
 import numpy as np
 import math
 
+class _state:
+    def __init__(self, qh, derivative):
+        self.qh = qh
+        self.t = 0.0
+        self.derivative = derivative
+        self.update_uv()
+        
+    def update_uv(self):
+        self.ph = - self.qh * self.derivative.irsq
+        self.uh = 1j * self.derivative.ky * self.ph
+        self.vh = -1j * self.derivative.kr * self.ph
+        
+    def out(self, cdim=1):
+        return torch.stack(
+            [to_physical(self.qh),
+            to_physical(self.ph),
+            to_physical(self.uh),
+            to_physical(self.vh)],
+            dim=cdim, # assume batched
+        )
+
 def to_physical(spectral_field):
     """
     Convert a spectral field to physical space (inverse FFT).

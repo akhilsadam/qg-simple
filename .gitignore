@@ -1,5 +1,4 @@
-run/
+auto/
 __pycache__
 **.ipynb
-wandb/
 lightning_logs/

@@ -6,12 +6,19 @@ def int_sq(y, grid):
     return Y * n
 
 # Generates initial conditions based on specified energy and wavenumber limits
-def _init_randn(energy, wavenumbers, grid, spectral_derivative, seed=86, **kwargs):
+def _init_randn(grid, spectral_derivative,
+                energy=0.0, wavenumbers=[3.0, 5.0], 
+                seed=86, persistent=True,
+                **kwargs):
+    
+    if persistent and 'ic_' in globals():
+        return globals()['ic_'].detach().clone()
+    
     torch.manual_seed(seed)
     
     # Use spectral_derivative for kr, ky, and krsq
     K = torch.sqrt(spectral_derivative.krsq)  # Wavenumber of each point in frequency space
-    k = spectral_derivative.kr.repeat(grid.Ny, 1)  # Ensure proper shape for k
+    k = spectral_derivative.kr.repeat(1, grid.Ny, 1)  # Ensure proper shape for k
 
     # Generate random complex field in spectral space
     qih = torch.randn(spectral_derivative.krsq.size(), dtype=torch.complex128).to(grid.device)
@@ -28,14 +35,19 @@ def _init_randn(energy, wavenumbers, grid, spectral_derivative, seed=86, **kwarg
     
     # Scale to the desired energy
     qih *= torch.sqrt(E0 / Ei)
+    
+    # Store the initial condition for persistent use
+    if persistent:
+        globals()['ic_'] = qih.detach().clone()
+    
     return qih
 
 ####################################################################################################
 
-valid_ic = lambda _ic: isinstance(_ic, dict) and 'function' in _ic and _ic['function'] in ic_library
+valid_ic = lambda _ic: hasattr(_ic, 'function') and _ic.function in ic_library
 
 ic_library = {
     'randn': _init_randn,
 }
 
-solve_ic =  lambda _ic: ic_library[_ic['function']](**_ic) if valid_ic(_ic) else _ic
+solve_ic = lambda _ic: (lambda *args: ic_library[_ic.function](*args, **_ic.__dict__)) if valid_ic(_ic) else _ic

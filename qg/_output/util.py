@@ -1,12 +1,8 @@
-import importlib
 import numpy as np
-import math
 import matplotlib.pyplot as plt
-from plot import vorticity_plots
 import os
-import torch
-import pickle
-import shutil
+from plot import vorticity_plots
+
 
 def print_config(obj, indent=0):
     """Recursively prints all attributes of a class or object."""

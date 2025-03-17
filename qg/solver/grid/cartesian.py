@@ -2,13 +2,24 @@ import torch
 import math
 
 
-class Grid:
-    def __init__(self, Lx=2*math.pi, Ly=2*math.pi, Nx=512, Ny=512, device='cuda'):
+class CartesianGrid:
+    def __init__(self, Lx=2*math.pi, Ly=2*math.pi, Nx=512, Ny=512, device='cuda', precision='float32', **kwargs):
         self.Lx = Lx
         self.Ly = Ly
         self.Nx = Nx
         self.Ny = Ny
         self.device = device
+        self.precision = precision
+        self.ftype = {
+            'float32': torch.float32,
+            'float64': torch.float64
+        }[precision]
+        self.ctype = {
+            'float32': torch.complex64,
+            'float64': torch.complex128
+        }[precision]
+        torch.set_default_dtype(self.ftype)
+
 
         self.size=self.Nx*self.Ny
         self.dx = self.Lx / self.Nx

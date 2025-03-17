@@ -1,0 +1,58 @@
+from qg.solver.util import _Math
+
+from qg.solver.opt.operator.jacobian import jacobian_pq
+from qg.solver.opt.operator.obstacle import solve_mask, brinkman_no_slip_penalty, brinkman_friction_slip_penalty
+
+def define_explict_operator(param, grid, derivative, logger, args, sources, **kwargs):
+    patches = []
+    if param.pde.penalty > 0:
+        
+        if param.pde.friction is not None:
+            logger.info("Using Brinkman penalty (friction-slip) operator")
+            brinkman_penalty = brinkman_friction_slip_penalty
+        else:
+            logger.info("Using Brinkman penalty (no-slip) operator")
+            brinkman_penalty = brinkman_no_slip_penalty
+            
+        mask = solve_mask(param.mask, grid, derivative)
+        patches.append(lambda op, state: brinkman_penalty(op, state, *mask(op, state)))
+        
+    patches.extend(sources)
+            
+    return Operator(*args, patch_list=patches)
+        
+class Operator:
+    def __init__(self, dt, grid, derivative, params, patch_list = []):        
+        self.dt = dt
+        self.grid = grid
+        self.derivative = derivative
+        self.params = params
+        self.device = grid.device
+
+        self.patch_list = [*patch_list,jacobian_pq]
+        
+    def source(self, state):
+        return sum([f(self, state) for f in self.patch_list])
+      
+    def __repr__(self):
+        return (f"Operator: device={self.device}")  
+
+## special implicit linear operator (since this is the only one for now)
+
+class ImplicitLinearOperator(_Math):
+    def __init__(self, grid, derivative, params):
+        self.derivative = derivative
+        self.params = params
+        self.device = grid.device
+        super().__init__(value = self._linear_term()) # precompute
+
+    def _linear_term(self):
+        nu = self.params.nu
+        mu = self.params.mu
+        B = self.params.B
+        # Calculate the linear term (first one is diffusion, then bottom drag, then Coriolis with beta term)
+        return -nu * self.derivative.krsq - mu - 1j * B * self.derivative.kr * self.derivative.irsq
+
+    def __repr__(self):
+        return (f"ImplictLinearOperator(nu={self.params.nu}, mu={self.params.mu},"
+                f"B={self.params.B}, device={self.device})")
