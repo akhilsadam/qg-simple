@@ -106,8 +106,10 @@ def brinkman_friction_slip_penalty(op, state, chi, chi_velocity):
     y = torch.arange(0, chi.shape[-2], device=chi.device)
     xc = (torch.round(normal_x) + x).to(torch.int32)
     yc = (torch.round(normal_y) + y).to(torch.int32)
+    print(xc.shape)
     uc = dutr[...,yc,xc]
     vc = dvtr[...,yc,xc]
+    print(yc.shape)
     
     u_corr = u * (1 - chi) + chi * uc
     v_corr = v * (1 - chi) + chi * vc
