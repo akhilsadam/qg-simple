@@ -67,14 +67,14 @@ config = type('config', (object,), {
                         type('validate', (object,), { 
                             'runner':'run.py',
                         'grid':type('grid', (object,), { 
-                                'Nx':res,
-                                'Ny':res,
+                                'Nx':512,
+                                'Ny':512,
                                 'Lx':6.283185307179586,
                                 'Ly':6.283185307179586,
                                 'precision':'float32',
                              }),
                         'time':type('time', (object,), { 
-                                'dt':dt,
+                                'dt':1e-3,
                                 'T':200,
                                 'save_rate':1000,
                              }),
@@ -83,7 +83,7 @@ config = type('config', (object,), {
                                 'nu':1.025e-3,
                                 'B':0.0,
                                 'nv':1,
-                                'penalty':penalty,
+                                'penalty': 0.0,
                                 'friction':0.0,
                                 'rossby_radius':None,
                              }),
@@ -114,9 +114,9 @@ config = type('config', (object,), {
                         #         'mask':'osk.png',
                         #      }),
                             'project_name':'qg',
-                         }) for dt in [0.01,0.002,0.001,0.0005,0.00025] # 64, 80, 100, 128, 160,
+                         }),# 64, 80, 100, 128, 160,
                     ],
-                 }) for name,penalty in [('pure', 0.0)] #, ('pure', 0.0)
+                 }),# for name,penalty in [('pure', 0.0)] #, ('pure', 0.0)
             ],
 
          }),

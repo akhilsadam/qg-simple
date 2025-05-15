@@ -3,12 +3,16 @@ import math
 
 
 class CartesianGrid:
-    def __init__(self, Lx=2*math.pi, Ly=2*math.pi, Nx=512, Ny=512, device='cuda', precision='float32', **kwargs):
+    def __init__(self, Lx=2*math.pi, Ly=2*math.pi, Nx=512, Ny=512, device=None, precision='float32', **kwargs):
         self.Lx = Lx
         self.Ly = Ly
         self.Nx = Nx
         self.Ny = Ny
-        self.device = device
+        
+        if device is None:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        else:
+            self.device = device
         self.precision = precision
         self.ftype = {
             'float32': torch.float32,
