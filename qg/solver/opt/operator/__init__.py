@@ -2,9 +2,20 @@ from qg.solver.util import _Math
 
 from qg.solver.opt.operator.jacobian import jacobian_pq
 from qg.solver.opt.operator.obstacle import solve_mask, brinkman_no_slip_penalty, brinkman_friction_slip_penalty
+from qg.solver.opt.operator.vortex import vortex_stretching
 
 def define_explict_operator(param, grid, derivative, logger, args, sources, **kwargs):
     patches = []
+    
+        
+    if param.bc is not None:
+        logger.info(f"Boundary condition")
+        patches.append(lambda op, state: param.bc(state, grid, derivative))
+    
+    if param.forcing is not None:
+        logger.info(f"Forced turbulence")
+        patches.append(lambda op, state: param.forcing(state, grid, derivative))
+        
     if param.pde.penalty > 0:
         
         # if param.pde.friction is not None:
@@ -17,6 +28,10 @@ def define_explict_operator(param, grid, derivative, logger, args, sources, **kw
         mask = solve_mask(param.mask, grid, derivative)
         patches.append(lambda op, state: brinkman_penalty(op, state, *mask(op, state)))
         
+    if param.pde.rossby_radius is not None:
+        logger.info("Using vortex stretching operator")
+        patches.append(vortex_stretching)
+
     patches.extend(sources)
             
     return Operator(*args, patch_list=patches)

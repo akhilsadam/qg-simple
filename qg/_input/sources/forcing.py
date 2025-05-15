@@ -1,8 +1,9 @@
 import torch
-from qg.solver.opt.basis import to_spectral, dealias
+import torch.nn.functional as F
+from qg.solver.opt.basis import to_physical, to_spectral, dealias
 
 # Generates forcing based on specified wavenumber and time effects
-def unscaled_cosine(state, grid, spectral_derivative, 
+def unscaled_cosine(state, grid, derivative, 
                     A=0.0, B=0.0, C=0.0, D=0.0, E=0.0, F=0.0,
                     **kwargs):
     # grid of coordinates (x, y)
@@ -11,10 +12,10 @@ def unscaled_cosine(state, grid, spectral_derivative,
     X, Y = x[None,:],y[:,None] # meshgrid for x, y
     
     w = A * (torch.cos(B * X + C * state.t)) \
-        + D * (torch.cos(E * Y + F * state.t))
+        + D * (torch.cos(E * Y + F * state.t)) [None,:,:]
     
     wh = to_spectral(w)
-    return dealias(wh,spectral_derivative,1/3)
+    return dealias(wh,derivative,1/3)
 
 ####################################################################################################
 

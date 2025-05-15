@@ -6,6 +6,10 @@ class Derivative:
         self.grid = grid
         self.device = grid.device
 
+        self.dx =  grid.Lx / (grid.Nx)
+        self.dy =  grid.Ly / (grid.Ny)
+        
+
         # Number of wavenumber components (half of real grid in x-direction)
         self.dk = int(grid.Nx / 2 + 1)
 

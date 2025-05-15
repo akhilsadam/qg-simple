@@ -13,10 +13,12 @@ from qg.solver.grid.cartesian import CartesianGrid
 from qg.solver.opt.derivative import Derivative
 from qg.solver.opt.operator import ImplicitLinearOperator, define_explict_operator
 
+from qg.solver.opt.operator.jacobian import advection_uv
+
 import os
 from mura.draw.static_plot import mp4 as static_mp4
 
-# TODO enable float32 precision
+# TODO enable float32/64 precision
 # TODO enable Sponge
 
 class QG():
@@ -44,13 +46,22 @@ class QG():
 
     
     def step(self, state):
+        state.dt = self.dt # Not sure if this is necessary, need to think about adaptive time stepping TODO
+
+        # vorticity step
         explicit_source = AB2(self.operator.source(state)) # source term
         state.qh = CN2(state.qh, explicit_source, self.dt, self.implicit_linear_operator) # Crank-Nicolson        
-        state.t = state.t + self.dt # update
+        
+        # potential flow velocity step
+        # state.x_adv, state.y_adv = advection_uv(self.operator, state)
+        
+        # update fields
         state.update_uv()
-            
+        # state.update_potential_flow() # also potential_flow
+        state.update_t()
+
     def init(self):  
-        return _state(self.param.ic(self.grid, self.derivative), self.derivative) # In spectral space
+        return _state(self.param.ic(self.grid, self.derivative), self.dt, self.derivative) # In spectral space
           
     def _run(self):
         save_rate = self.param.time.save_rate
@@ -68,12 +79,17 @@ class QG():
         return solution
     
     def solve(self, save_path): # for direct user call
-        solution = self._run().cpu().numpy()
+        solution = self._run()
+        solution = solution.cpu().numpy()
         self.logger.info(f"Simulation complete.")
         
         np.save(os.path.join(save_path,'DNS.npy'), solution)
         self.logger.info(f"Simulation saved at {save_path}")
         
         static_mp4(os.path.join(save_path,'DNS.mp4'), solution,
-                   fps=2, triplet=False, mn = [2,2])
+                   fps=20, triplet=False, mn = [4,1])
+        static_mp4(os.path.join(save_path,'DNS_clamped.mp4'), solution,
+                   fps=20, triplet=False, mn = [4,1], clamp=0.3)
+        static_mp4(os.path.join(save_path,'DNS_seismic.mp4'), solution,
+                   fps=20, triplet=False, mn = [4,1], cmap='seismic', clamp=0.3)       
         self.logger.info(f"Videos saved.")

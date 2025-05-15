@@ -50,6 +50,7 @@ class pde:
     nv = 1                  # Hyperviscous order
     penalty = 1.25          # Brinkman penalty parameter
     friction = None         # friction coefficient - between no-slip and free-slip
+    rossby_radius = None    # Rossby radius for vortex stretching
     
 class ic:
     function = 'randn'
@@ -75,6 +76,8 @@ class config:
     project_name = 'qg'
     cluster_name = 'mseas.mit.edu'
     
+class gconfig:
+    checks = ['qg/solver']
 
 class validate():    
     def __init__(self, _params):
@@ -92,11 +95,13 @@ class validate():
     def solve(self):
         # imports here to avoid import on load
         from qg._input.sources.ic import solve_ic
+        from qg._input.sources.bc import solve_bc
         from qg._input.sources.forcing import solve_forcing
         from qg._input.mask.mask import solve_mask
         
         self.ic = solve_ic(self.ic)
-        self.forcing = solve_forcing(self.forcing)
+        self.bc = solve_bc(self.bc)
         self.mask = solve_mask(self.mask)
-
+        self.forcing = solve_forcing(self.forcing)
+        
         return self

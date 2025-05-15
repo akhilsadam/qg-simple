@@ -3,9 +3,10 @@ import numpy as np
 import math
 
 class _state:
-    def __init__(self, qh, derivative):
+    def __init__(self, qh, dt, derivative):
         self.qh = qh
         self.t = 0.0
+        self.dt = dt
         self.derivative = derivative
         self.update_uv()
         
@@ -14,11 +15,33 @@ class _state:
         self.uh = 1j * self.derivative.ky * self.ph
         self.vh = -1j * self.derivative.kr * self.ph
         
+    def update_potential_flow(self):    
+        self.uh = self.uh + self.uh_p + self.x_adv * self.dt
+        self.vh = self.vh + self.vh_p + self.y_adv * self.dt
+        
+    def update_qp(self):
+        self.qh = - 1j * self.derivative.kr * self.vh + 1j * self.derivative.ky * self.uh
+        self.ph = - self.qh * self.derivative.irsq
+        
+        uh_w = 1j * self.derivative.ky * self.ph
+        vh_w = -1j * self.derivative.kr * self.ph
+        
+        self.uh_p = self.uh - uh_w
+        self.vh_p = self.vh - vh_w
+        
+    def update_t(self):
+        self.t += self.dt
+        
+    def update_uvt(self):
+        self.update_uv()
+        self.update_t()
+            
     def out(self, cdim=1):
         return torch.stack(
             [to_physical(self.qh),
             to_physical(self.ph),
             to_physical(self.uh),
+            # to_physical(self.uh_p),
             to_physical(self.vh)],
             dim=cdim, # assume batched
         )

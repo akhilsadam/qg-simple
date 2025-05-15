@@ -1,3 +1,4 @@
+import torch
 from qg.solver.opt.basis import to_physical, to_spectral, dealias
 
 def jacobian_pq(op, state):
@@ -20,3 +21,45 @@ def jacobian_pq(op, state):
         jacobian,  
         op.derivative,
         1/3)
+    
+def advection_uv(op, state):
+    ''' - (u . del) u '''
+    
+    
+    # get potential flow contributions:
+    u = to_physical(state.uh_p)
+    v = to_physical(state.vh_p)
+    u_p = to_physical(state.uh_p)
+    v_p = to_physical(state.vh_p)
+    
+    dudy, dudx = torch.gradient(u_p, dim=(-2,-1), spacing=(op.derivative.dy, op.derivative.dx))
+    dvdy, dvdx = torch.gradient(v_p, dim=(-2,-1), spacing=(op.derivative.dy, op.derivative.dx))
+    # faster than two ffts?
+    
+    x_adv = - (u * dudx + v * dudy)
+    y_adv = - (u * dvdx + v * dvdy)
+    
+    x_advh = to_spectral(x_adv)
+    y_advh = to_spectral(y_adv)
+    
+    
+    
+    ### Not correct; mult becomes convolution!    
+    # dudx = 1j * op.derivative.kr * state.uh_p
+    # dudy = 1j * op.derivative.ky * state.uh_p
+    # dvdx = 1j * op.derivative.kr * state.vh_p
+    # dvdy = 1j * op.derivative.ky * state.vh_p
+    
+    # x_adv = - (state.uh * dudx + state.vh * dudy)
+    # y_adv = - (state.uh * dvdx + state.vh * dvdy)
+    
+    return dealias(
+        x_advh,  
+        op.derivative,
+        1/3), \
+        dealias(
+        y_advh,  
+        op.derivative,
+        1/3)
+
+    

@@ -5,5 +5,5 @@ from param import param
 
 if __name__ == "__main__":
     
-    auto = SingleInstancer(vc.validate, vc.config, param, _action_name='qg', no_compute=True)
+    auto = SingleInstancer(vc.validate, vc.config, param, _action_name='qg', gconfig=vc.gconfig,  no_compute=True)
     auto.run()

@@ -1,11 +1,11 @@
 import qg._input.validate_configuration as vc   
-from mura import SingleInstancer
+from mura import Instancer
 # from mura.deploy.util import serialize_class
-from param import param
+from param import config
 
 if __name__ == "__main__":
     
-    auto = SingleInstancer(vc.validate, vc.config, param, _action_name='qg', gconfig=vc.gconfig)
+    auto = Instancer(vc.validate, config=config, gconfig=vc.gconfig)     
     # print(auto)
     # serialize_class(auto, 'test_param.py')
     
