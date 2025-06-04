@@ -1,8 +1,20 @@
 import logging, os, sys, importlib, importlib.util
 
+save_path = '../simple_run/'
+logfile = os.path.join(save_path, 'python.log')
+os.makedirs(save_path, exist_ok=True)
+
 logFormatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
 py_logger = logging.getLogger('local')
 py_logger.setLevel(logging.INFO)
+
+consoleHandler = logging.StreamHandler()
+consoleHandler.setFormatter(logFormatter)
+py_logger.addHandler(consoleHandler)
+
+fileHandler = logging.FileHandler(logfile)
+fileHandler.setFormatter(logFormatter)
+py_logger.addHandler(fileHandler)
          
 module_name = 'param'
 module_path = os.path.join(os.getcwd(), 'param.py')
@@ -18,8 +30,6 @@ else:
 _config = module
 config = _config.config
 
-save_path = '../simple_run/'
-os.makedirs(save_path, exist_ok=True)
 
 from mura.deploy.util import cprint
 
