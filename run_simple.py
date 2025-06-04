@@ -18,7 +18,8 @@ else:
 _config = module
 config = _config.config
 
-save_path = '.'
+save_path = '../simple_run/'
+os.makedirs(save_path, exist_ok=True)
 
 from mura.deploy.util import cprint
 
