@@ -13,21 +13,17 @@ if os.path.exists(module_path):
     spec.loader.exec_module(module)
     # Now you can use the module
 else:
-    py_logger.warn(f"File not found: {module_path}")
+    py_logger.warning(f"File not found: {module_path}")
+    
 _config = module
-
-
-param = _config
-config = param.config
+config = _config.config
 
 save_path = '.'
 
 from mura.deploy.util import cprint
-from qg.solver.qg import QG
-    
 
-# py_logger.info(version)
 py_logger.info(save_path)
 py_logger.info(cprint(config))
 
+from qg.solver.qg import QG
 QG(config,logger=py_logger).solve(save_path=save_path)

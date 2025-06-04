@@ -89,6 +89,7 @@ class validate():
         self.ic = ic
         self.forcing = forcing
         self.mask = mask
+        self.bc = None # TBD
         
         crupdate(self, _params)
         
