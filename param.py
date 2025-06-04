@@ -52,7 +52,7 @@ res = 128
 config = type('config', (object,), {
     'actions':[ \
         type('action', (object,), { 
-            'action_name':'convergence_test',
+            'action_name':'',
             'no_compute':False,
             'strict_version_checks':False,
             'base_save_path':'../run/',
@@ -62,7 +62,7 @@ config = type('config', (object,), {
             'data':'',
             'tasks':[ \
                 type('task', (object,), { 
-                    'task_name':name,
+                    'task_name':'',
                     'runs':[ \
                         type('validate', (object,), { 
                             'runner':'run.py',
