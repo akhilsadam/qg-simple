@@ -1,5 +1,7 @@
 import logging, os, sys, importlib, importlib.util
 
+# only runs one file
+
 save_path = '../simple_run/'
 logfile = os.path.join(save_path, 'python.log')
 os.makedirs(save_path, exist_ok=True)
@@ -28,8 +30,14 @@ else:
     py_logger.warning(f"File not found: {module_path}")
     
 _config = module
-config = _config.config
-
+if hasattr(_config, 'config'):
+    cconfig = _config.config
+    param = cconfig.actions[0].tasks[0].runs[0]
+else:
+    print(_config)
+    param = _config.param
+    
+config = param
 
 from mura.deploy.util import cprint
 
