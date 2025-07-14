@@ -6,3 +6,6 @@ __pycache__
 lightning_logs/
 .sw/
 .venv/
+dist/
+quasigeostrophic_flow.egg-info/
+.pytest_cache

@@ -16,7 +16,8 @@ from qg.solver.opt.operator import ImplicitLinearOperator, define_explict_operat
 from qg.solver.opt.operator.jacobian import advection_uv
 
 import os
-from mura.draw.static_plot import mp4 as static_mp4
+import logging
+import jpcm.draw as draw
 
 # TODO enable float32/64 precision
 # TODO enable Sponge
@@ -27,7 +28,7 @@ class QG():
                  derivative = Derivative,
                  implicit_linear_operator = ImplicitLinearOperator,
                  explicit_sources = [],
-                 logger = print):
+                 logger = logging.getLogger(__name__)):
         
         param = vc.validate(param).solve()
 
@@ -86,10 +87,10 @@ class QG():
         np.save(os.path.join(save_path,'DNS.npy'), solution)
         self.logger.info(f"Simulation saved at {save_path}")
         
-        static_mp4(os.path.join(save_path,'DNS.mp4'), solution,
+        draw.mp4(os.path.join(save_path,'DNS.mp4'), solution,
                    fps=20, triplet=False, mn = [4,1])
-        static_mp4(os.path.join(save_path,'DNS_clamped.mp4'), solution,
+        draw.mp4(os.path.join(save_path,'DNS_clamped.mp4'), solution,
                    fps=20, triplet=False, mn = [4,1], clamp=0.3)
-        static_mp4(os.path.join(save_path,'DNS_seismic.mp4'), solution,
+        draw.mp4(os.path.join(save_path,'DNS_seismic.mp4'), solution,
                    fps=20, triplet=False, mn = [4,1], cmap='seismic', clamp=0.3)       
         self.logger.info(f"Videos saved.")

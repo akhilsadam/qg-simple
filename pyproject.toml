@@ -1,0 +1,44 @@
+[project]
+name = "quasigeostrophic-flow"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Akhil Sadam", email = "sadam.akhil@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "lightning",
+    "torch",
+    "einops",
+    "tqdm",
+    "matplotlib",
+    "ffmpeg-python",
+    "wandb",
+    "gitpython",
+    "jpcm",
+    "pyyaml",
+    "pytest",
+    "mura>=0.2.4",
+    # optional
+    # "mura", # for deploy scripts; obsoleted here...
+]
+
+[options.packages.find]
+where = "src"
+
+[build-system]
+requires = [
+    "uv>=0.7.20",
+    "setuptools",
+]
+
+
+[tool.pytest.ini_options]
+pythonpath = "src"
+addopts = [
+    "--import-mode=importlib",
+    "--capture=no",
+    '-vvv'
+    ]

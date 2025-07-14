@@ -1,8 +1,8 @@
-run: # should auto identify for MSEAS cluster or local
-	python3 -m qg.deploy.with_compute
-	
-multiple:
-	python3 -m qg.deploy.multiple
+install-w-venv:
+	uv run --with qg -- python -c "import qg"
 
 install:
-	bash install/install.sh
+	uv pip install -e .
+
+test:
+	python3 -m pytest src/qg/test.py

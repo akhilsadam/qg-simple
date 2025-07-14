@@ -1,3 +1,0 @@
-mura
-
-### needs FFMPEG 7
