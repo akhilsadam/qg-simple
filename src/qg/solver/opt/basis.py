@@ -75,6 +75,6 @@ def dealias(y, spectral_derivative, dealias_factor=1/3):
     kcut = math.sqrt(2) * (1 - dealias_factor) * min(spectral_derivative.ky.max(), spectral_derivative.kr.max())
     
     # Apply dealiasing: set high-frequency components to zero
-    y[torch.sqrt(spectral_derivative.krsq) > kcut] = 0
+    y[torch.sqrt(spectral_derivative.krsq).expand_as(y) > kcut] = 0
     
     return y

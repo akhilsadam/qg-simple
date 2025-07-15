@@ -7,7 +7,7 @@ def int_sq(y, grid):
 
 # Generates initial conditions based on specified energy and wavenumber limits
 def _init_randn(grid, spectral_derivative,
-                energy=0.0, wavenumbers=[3.0, 5.0], 
+                energy=0.0, wavenumbers=[3.0, 5.0], n_batch = 1,
                 seed=86, persistent=True,
                 **kwargs):
     
@@ -17,11 +17,11 @@ def _init_randn(grid, spectral_derivative,
     torch.manual_seed(seed)
     
     # Use spectral_derivative for kr, ky, and krsq
-    K = torch.sqrt(spectral_derivative.krsq)  # Wavenumber of each point in frequency space
-    k = spectral_derivative.kr.repeat(1, grid.Ny, 1)  # Ensure proper shape for k
+    K = torch.sqrt(spectral_derivative.krsq).repeat(n_batch, 1, 1)  # Wavenumber of each point in frequency space
+    k = spectral_derivative.kr.repeat(n_batch, grid.Ny, 1)                # Ensure proper shape for k
 
     # Generate random complex field in spectral space
-    qih = torch.randn(spectral_derivative.krsq.size(), dtype=torch.complex128).to(grid.device)
+    qih = torch.randn(k.size(), dtype=torch.complex128).to(grid.device)
     
     # Apply wavenumber filters
     qih[K < wavenumbers[0]] = 0.0

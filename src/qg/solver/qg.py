@@ -45,7 +45,6 @@ class QG():
         self.dt = param.time.dt
         self.logger.info(f"Initialized QG model with {self.grid.Nx}x{self.grid.Ny} grid on {self.grid.device}")
 
-    
     def step(self, state):
         state.dt = self.dt # Not sure if this is necessary, need to think about adaptive time stepping TODO
 
@@ -75,7 +74,7 @@ class QG():
             
             if (it+1) % save_rate == 0:
                 save_index = (it + 1) // save_rate
-                solution[save_index, ...] = state.out()[0] # batch size 1
+                solution[save_index, ...] = state.out() # B T C H W
                 
         return solution
     
@@ -87,10 +86,20 @@ class QG():
         np.save(os.path.join(save_path,'DNS.npy'), solution)
         self.logger.info(f"Simulation saved at {save_path}")
         
-        draw.mp4(os.path.join(save_path,'DNS.mp4'), solution,
-                   fps=20, triplet=False, mn = [4,1])
-        draw.mp4(os.path.join(save_path,'DNS_clamped.mp4'), solution,
-                   fps=20, triplet=False, mn = [4,1], clamp=0.3)
-        draw.mp4(os.path.join(save_path,'DNS_seismic.mp4'), solution,
-                   fps=20, triplet=False, mn = [4,1], cmap='seismic', clamp=0.3)       
+        # select a couple batches for visualization (permute 0,1 axes)
+        solution_b = np.transpose(solution[0:4, ...],(1,0,2,3,4))  # T (selected_B) C H W
+
+        draw.mp4(os.path.join(save_path,'DNS.mp4'), solution_b,
+                   fps=20, triplet=True)
+        draw.mp4(os.path.join(save_path,'DNS_clamped.mp4'), solution_b,
+                   fps=20, triplet=True, clamp=0.3)
+        draw.mp4(os.path.join(save_path,'DNS_seismic.mp4'), solution_b,
+                   fps=20, triplet=True, cmap='seismic', clamp=0.3)  
+        
+        # draw.mp4(os.path.join(save_path,'DNS.mp4'), solution_b,
+        #            fps=20, triplet=False, mn = [4,1])
+        # draw.mp4(os.path.join(save_path,'DNS_clamped.mp4'), solution_b,
+        #            fps=20, triplet=False, mn = [4,1], clamp=0.3)
+        # draw.mp4(os.path.join(save_path,'DNS_seismic.mp4'), solution_b,
+        #            fps=20, triplet=False, mn = [4,1], cmap='seismic', clamp=0.3)       
         self.logger.info(f"Videos saved.")
