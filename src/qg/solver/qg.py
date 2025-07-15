@@ -105,3 +105,9 @@ class QG():
         self.logger.info(f"Videos saved.")
         
         return solution_torch
+
+    def nn_step(self, u):
+        state = _state(None, self.dt, self.derivative) # In spectral space
+        state._in(u)
+        self.step(state)
+        return state.out(cdim=1)[:,None,...]  # B T C H W

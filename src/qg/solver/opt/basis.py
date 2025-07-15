@@ -8,7 +8,9 @@ class _state:
         self.t = 0.0
         self.dt = dt
         self.derivative = derivative
-        self.update_uv()
+        
+        if self.qh is not None:
+            self.update_uv()
         
     def update_uv(self):
         self.ph = - self.qh * self.derivative.irsq
