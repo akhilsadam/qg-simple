@@ -35,7 +35,13 @@ class _state:
     def update_uvt(self):
         self.update_uv()
         self.update_t()
-            
+        
+    def _in(self, all): # assumes all is B T C H W tensor
+        self.qh = all[:,-1,0]
+        self.ph = all[:,-1,1]
+        self.uh = all[:,-1,2]
+        self.vh = all[:,-1,3]     
+        
     def out(self, cdim=1):
         return torch.stack(
             [to_physical(self.qh),
