@@ -103,3 +103,5 @@ class QG():
         # draw.mp4(os.path.join(save_path,'DNS_seismic.mp4'), solution_b,
         #            fps=20, triplet=False, mn = [4,1], cmap='seismic', clamp=0.3)       
         self.logger.info(f"Videos saved.")
+        
+        return solution
