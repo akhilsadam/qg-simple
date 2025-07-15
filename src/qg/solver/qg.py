@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 
 from tqdm import tqdm
-from qg.solver.opt.basis import _state
+from qg.solver.opt.basis import _state, to_spectral
 from qg.solver.integrator.imex import CN2, AB2
 
 import qg._input.validate_configuration as vc
@@ -66,34 +66,37 @@ class QG():
     def _run(self):
         save_rate = self.param.time.save_rate
         steps = int(self.param.time.T / self.dt)  # Number of time steps
-        solution = torch.zeros([int(steps/save_rate)+1, 4, self.grid.Nx, self.grid.Ny])
         
         state = self.init()
+        
+        B = state.qh.shape[0]  # Number of batches
+        solution = torch.zeros([B, int(steps/save_rate)+1, 4, self.grid.Nx, self.grid.Ny])
+        
         for it in tqdm(range(steps - 1)):
             self.step(state)            
             
             if (it+1) % save_rate == 0:
                 save_index = (it + 1) // save_rate
-                solution[save_index, ...] = state.out() # B T C H W
+                solution[:, save_index, ...] = state.out() # B T C H W
                 
         return solution
     
-    def solve(self, save_path): # for direct user call
+    def solve(self, save_path, name='DNS'): # for direct user call
         solution_torch = self._run()
         solution = solution_torch.cpu().numpy()
         self.logger.info(f"Simulation complete.")
         
-        np.save(os.path.join(save_path,'DNS.npy'), solution)
+        np.save(os.path.join(save_path,f'{name}.npy'), solution)
         self.logger.info(f"Simulation saved at {save_path}")
         
         # select a couple batches for visualization (permute 0,1 axes)
         solution_b = np.transpose(solution[0:4, ...],(1,0,2,3,4))  # T (selected_B) C H W
 
-        draw.mp4(os.path.join(save_path,'DNS.mp4'), solution_b,
+        draw.mp4(os.path.join(save_path,f'{name}.mp4'), solution_b,
                    fps=20, triplet=True)
-        draw.mp4(os.path.join(save_path,'DNS_clamped.mp4'), solution_b,
+        draw.mp4(os.path.join(save_path,f'{name}_clamped.mp4'), solution_b,
                    fps=20, triplet=True, clamp=0.3)
-        draw.mp4(os.path.join(save_path,'DNS_seismic.mp4'), solution_b,
+        draw.mp4(os.path.join(save_path,f'{name}_seismic.mp4'), solution_b,
                    fps=20, triplet=True, cmap='seismic', clamp=0.3)  
         
         # draw.mp4(os.path.join(save_path,'DNS.mp4'), solution_b,
@@ -107,7 +110,7 @@ class QG():
         return solution_torch
 
     def nn_step(self, u):
-        state = _state(None, self.dt, self.derivative) # In spectral space
-        state._in(u)
+        qh = to_spectral(u[:,-1,0,...]) # B T C H W -> B H W
+        state = _state(qh, self.dt, self.derivative) # In spectral space
         self.step(state)
-        return state.out(cdim=1)[:,None,...]  # B T C H W
+        return state._out()[:,None,None,...]  # B H W -> B T C H W
