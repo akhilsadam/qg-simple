@@ -79,8 +79,8 @@ class QG():
         return solution
     
     def solve(self, save_path): # for direct user call
-        solution = self._run()
-        solution = solution.cpu().numpy()
+        solution_torch = self._run()
+        solution = solution_torch.cpu().numpy()
         self.logger.info(f"Simulation complete.")
         
         np.save(os.path.join(save_path,'DNS.npy'), solution)
@@ -104,4 +104,4 @@ class QG():
         #            fps=20, triplet=False, mn = [4,1], cmap='seismic', clamp=0.3)       
         self.logger.info(f"Videos saved.")
         
-        return solution
+        return solution_torch
