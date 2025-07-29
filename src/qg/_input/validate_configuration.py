@@ -60,6 +60,10 @@ class ic:
     function : float = 'randn'
     energy : float = 0.01
     wavenumbers : list = field(default_factory = lambda: [10.0, 32.0])
+    
+@design
+class bc:
+    function : float = 'periodic'
 
 @design
 class forcing:
@@ -98,8 +102,10 @@ class config:
     time : time = time()
     pde : pde = pde()
     ic : ic = ic()
+    bc : bc = bc()
     forcing: forcing = forcing()
     mask : mask = mask()
+    fps: int = 20 # frames per second for video output
 
 @design
 class gconfig:
@@ -115,7 +121,8 @@ class validate():
         self.ic = param.ic
         self.forcing = param.forcing
         self.mask = param.mask
-        self.bc = None # TBD
+        self.bc = param.bc # TBD
+        self.fps = param.fps
        
         self.ic.seed = param.seed 
 

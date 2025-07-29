@@ -93,11 +93,11 @@ class QG():
         solution_b = np.transpose(solution[0:4, ...],(1,0,2,3,4))  # T (selected_B) C H W
 
         draw.mp4(os.path.join(save_path,f'{name}.mp4'), solution_b,
-                   fps=20, triplet=True)
+                   fps=self.param.fps, triplet=True)
         draw.mp4(os.path.join(save_path,f'{name}_clamped.mp4'), solution_b,
-                   fps=20, triplet=True, clamp=0.3)
+                   fps=self.param.fps, triplet=True, clamp=0.3)
         draw.mp4(os.path.join(save_path,f'{name}_seismic.mp4'), solution_b,
-                   fps=20, triplet=True, cmap='seismic', clamp=0.3)  
+                   fps=self.param.fps, triplet=True, cmap='seismic', clamp=0.3)  
         
         # draw.mp4(os.path.join(save_path,'DNS.mp4'), solution_b,
         #            fps=20, triplet=False, mn = [4,1])
