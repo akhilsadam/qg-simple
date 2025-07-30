@@ -21,6 +21,7 @@ dependencies = [
     "pyyaml",
     "pytest",
     "mura>=0.2.4",
+    "netcdf4",
     # optional
     # "mura", # for deploy scripts; obsoleted here...
 ]

@@ -9,3 +9,5 @@ lightning_logs/
 dist/
 quasigeostrophic_flow.egg-info/
 .pytest_cache
+**.nc
+**.npy
