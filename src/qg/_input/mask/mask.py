@@ -71,7 +71,7 @@ def cape(grid, derivative, height=1/4, sigma=1/16, tolerance=1e-2, pad=0.24, **k
     Ny = grid.Ny
 
     # Create a grid of coordinates (x, y)
-    x = torch.linspace(0, 1, Nx, device = grid.device)[None, :]
+    x = torch.linspace(0, Nx/Ny, Nx, device = grid.device)[None, :]
     y = torch.flip(torch.linspace(0, 1, Ny, device = grid.device), (0,))[:, None]
 
     # Find the center of the domain

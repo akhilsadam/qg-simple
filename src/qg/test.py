@@ -37,8 +37,8 @@ def test_ideal_cape_high_re():
     _config.logging.task_name = "test_ideal_cape_high_re"
     _config.logging.run_name = ""
     _config.forcing = None
-    _config.grid.Nx = 256
-    _config.grid.Ny = 256
+    _config.grid.Nx = 512 + 256
+    _config.grid.Ny = 512
     _config.pde.nu = 5e-4 # RE 2000
     _config.pde.penalty = 4.0 # Brinkman penalty parameter for cylinder
     _config.ic.wavenumbers = [1, 3] # param.data_wavenumbers
@@ -48,9 +48,9 @@ def test_ideal_cape_high_re():
     _config.bc.width = 0.08 # Width of the sponge region
     _config.time.dt = 1e-4 # param.dt
     _config.time.save_rate = 500 # param.sim_steps
-    _config.time.T = 12
+    _config.time.T = 120
     _config.ic.n_batch = 1
-    _config.fps = 4
+    _config.fps = 20
     autorun(_config)
     
 def test_ideal_cape_low_re():
@@ -58,8 +58,8 @@ def test_ideal_cape_low_re():
     _config.logging.task_name = "test_ideal_cape_low_re"
     _config.logging.run_name = ""
     _config.forcing = None
-    _config.grid.Nx = 256
-    _config.grid.Ny = 256
+    _config.grid.Nx = 512 + 256
+    _config.grid.Ny = 512
     _config.pde.nu = 5e-3 # RE 200
     _config.pde.penalty = 4.0 # Brinkman penalty parameter for cylinder
     _config.ic.wavenumbers = [1, 3] # param.data_wavenumbers
@@ -70,9 +70,9 @@ def test_ideal_cape_low_re():
     _config.bc.width = 0.08 # Width of the sponge region
     _config.time.dt = 1e-4 # param.dt
     _config.time.save_rate = 500 # param.sim_steps
-    _config.time.T = 12
+    _config.time.T = 120
     _config.ic.n_batch = 1
-    _config.fps = 4
+    _config.fps = 20
     autorun(_config)
 
 
