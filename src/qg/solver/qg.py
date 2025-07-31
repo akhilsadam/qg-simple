@@ -104,7 +104,16 @@ class QG():
         # draw.mp4(os.path.join(save_path,'DNS_clamped.mp4'), solution_b,
         #            fps=20, triplet=False, mn = [4,1], clamp=0.3)
         # draw.mp4(os.path.join(save_path,'DNS_seismic.mp4'), solution_b,
-        #            fps=20, triplet=False, mn = [4,1], cmap='seismic', clamp=0.3)       
+        #            fps=20, triplet=False, mn = [4,1], cmap='seismic', clamp=0.3)    
+        
+        # make streamlines from the vorticity field
+        draw.streamlines(os.path.join(save_path,f'{name}_streamlines.mp4'), solution_b[:,:,1,...], -solution_b[:,:,2,...], 
+                         fps=self.param.fps) # u, -v
+        
+        
+        
+        
+           
         self.logger.info(f"Videos saved.")
         
         return solution_torch

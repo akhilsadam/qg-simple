@@ -65,7 +65,29 @@ def fpc(grid, derivative, # add state as first argument if time-dependent
     
     return mask[None,:,:]  # Add batch dimension
 
+def cape(grid, derivative, height=1/4, sigma=1/16, tolerance=1e-2, pad=0.24, **kwargs):
+    # Use grid object for domain size and number of grid points
+    Nx = grid.Nx
+    Ny = grid.Ny
 
+    # Create a grid of coordinates (x, y)
+    x = torch.linspace(0, 1, Nx, device = grid.device)[None, :]
+    y = torch.flip(torch.linspace(0, 1, Ny, device = grid.device), (0,))[:, None]
+
+    # Find the center of the domain
+    x_center = 3 / 16
+    y_center = pad + 1 / 8
+
+    # vertical cape profile
+    cape_profile = (y_center + height * torch.exp(-((x-x_center)/sigma)**2) - y)
+    cape = (cape_profile > 0) \
+        * (y > y_center - 1/8)
+
+    mask = torch.zeros_like(cape_profile)
+    mask[cape > 0] = 1  # Inside the circle
+    mask[torch.abs(cape_profile) < tolerance] = 0.5 
+    
+    return mask[None,:,:]  # Add batch dimension
 
 def im(grid, derivative, # add state as first argument if time-dependent
              mask='osk.png', th=0.5, blur=0.0, pad=0, pad_mode='lrtd',
@@ -76,19 +98,6 @@ def im(grid, derivative, # add state as first argument if time-dependent
     Nx = grid.Nx
     Ny = grid.Ny
 
-    # open image as np array
-    
-    # get current file path
-    path = os.path.dirname(os.path.abspath(__file__))
-    
-    # check if mask is not an absolute path
-    if not os.path.isabs(mask):
-        mask = os.path.join(path, 'mask', mask)
-    
-    
-    img = Image.open(mask)
-    # img = img.resize((Nx, Ny))
-    # pad image if pad > 0
     if pad > 0:
         # pad image out with 0-padding
         pads = [0,0,0,0]
@@ -100,16 +109,34 @@ def im(grid, derivative, # add state as first argument if time-dependent
             pads[2] = pad
         if 'd' in pad_mode:
             pads[3] = pad
-               
-        img = img.resize((Nx - pads[0] - pads[1], Ny - pads[2] - pads[3]))
-        img = add_margin(img, Nx, Ny, pads[0], pads[1], 0)
-    else:
-        img = img.resize((Nx, Ny))
     
-    img = img.convert('L')
-    img = np.array(img).astype(np.float32)
-    img /= np.max(img)
-    img = torch.tensor(img)
+    if isinstance(mask, str):
+        # get current file path
+        path = os.path.dirname(os.path.abspath(__file__))
+        
+        # check if mask is not an absolute path
+        if not os.path.isabs(mask):
+            mask = os.path.join(path, 'mask', mask)
+        img = Image.open(mask)        
+        
+        # img = img.resize((Nx, Ny))
+        # pad image if pad > 0
+        if pad > 0:
+            img = img.resize((Nx - pads[0] - pads[1], Ny - pads[2] - pads[3]))
+            img = add_margin(img, Nx, Ny, pads[0], pads[1], 0)
+        else:
+            img = img.resize((Nx, Ny))
+        
+        img = img.convert('L')
+        img = np.array(img).astype(np.float32)
+        img /= np.max(img)
+        img = torch.tensor(img)
+        
+    else:
+        raise ValueError(f"Mask should be a string path to an image file, got {mask} instead. Not implemented yet.")
+        
+    
+        
     mask = torch.where(img > th, 1.0, 0.0).to(grid.device, dtype=grid.ftype)
 
     if blur > 0.0:
@@ -160,6 +187,7 @@ valid_mask = lambda _mask: hasattr(_mask, 'function') and _mask.function in mask
 
 mask_library = {
     'fpc': fpc,
+    'cape': cape,
     'circular': circular,
     'image': im,
     'netCDF': nc,

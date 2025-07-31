@@ -7,6 +7,7 @@ from qg.solver.opt.basis import to_physical, to_spectral, dealias
 def solve_mask(mask, grid, derivative):
     signature = inspect.signature(mask)
     num_params = len(signature.parameters)
+    print(f"Mask function {mask.__name__} has {num_params} parameters.")
     
     kernel = 1/16 * torch.tensor([[1, 2, 1], [2, 4, 2], [1, 2, 1]]).to(grid.device)[None,None,...]
 
