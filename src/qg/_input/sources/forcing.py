@@ -15,7 +15,7 @@ def unscaled_cosine(state, grid, derivative,
         + D * (torch.cos(E * Y + F * state.t)) [None,:,:]
     
     wh = to_spectral(w)
-    return derivative.dealias(wh)
+    return wh
 
 ####################################################################################################
 

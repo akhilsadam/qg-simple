@@ -47,7 +47,7 @@ class Operator:
         self.patch_list = [*patch_list,jacobian_pq]
         
     def source(self, state):
-        return sum([f(self, state) for f in self.patch_list])
+        return self.derivative.dealias(sum([f(self, state) for f in self.patch_list]))
       
     def __repr__(self):
         return (f"Operator: device={self.device}")  

@@ -6,13 +6,20 @@ from functools import lru_cache
 
 class Sponge:
     @staticmethod
-    def double_sponge(state, derivative, eta, masks, uh, vh):
+    def vorticity_sponge(state, derivative, eta, mask, uh, vh):
         
-        _outlet_v1, _outlet_v2, _outlet_v1_ramp = masks
+        _ramp = mask
         _eta = eta * state.dt
         
         ### vorticity / open bc
-        outlet_vorticity_sponge = to_spectral(_outlet_v1 * to_physical(1j * derivative.kr * state.vh - 1j * derivative.ky * state.uh)) / _eta
+        outlet_vorticity_sponge = to_spectral(_ramp * to_physical(1j * derivative.kr * state.vh - 1j * derivative.ky * state.uh)) / _eta
+        return outlet_vorticity_sponge
+    
+    @staticmethod
+    def diffuse_sponge(state, derivative, eta, masks, uh, vh):
+        
+        _outlet_v1, _outlet_v2, _outlet_v1_ramp = masks
+        _eta = eta * state.dt
         
         ### velocity / closed bc
         masked_vh_delta = to_spectral(_outlet_v2 * to_physical(state.vh - vh)) 
@@ -22,7 +29,7 @@ class Sponge:
         ### diffusion
         outlet_diffusion = -0.1 * derivative.krsq * to_spectral(_outlet_v1_ramp * to_physical(state.qh))
             
-        return derivative.dealias(outlet_diffusion + outlet_velocity_sponge)
+        return outlet_diffusion + outlet_velocity_sponge # outlet_vorticity_sponge + 
     
 
 class Flow:
@@ -43,6 +50,18 @@ class Flow:
         return flow_uh, flow_vh
 
 class Region:
+    
+    @staticmethod
+    def vertical_outlet_single_mask(grid, X, Y, _min, _max, x, width):
+        _mask_1 = ((X > x) * (X < x + width) \
+            * (Y >= _min) * (Y <= _max))[None,:,:].to(grid.ftype)
+        
+        _mask_ramp = _mask_1 \
+            * (X - x) / width
+            
+        return _mask_ramp
+
+
     @staticmethod
     def vertical_outlet_double_mask(grid, X, Y, _min, _max, x, width):
         _mask_1 = ((X > x) * (X < x + width) \
@@ -54,7 +73,34 @@ class Region:
             * (X - x) / width
             
         return _mask_1, _mask_2, _mask_ramp
-
+    
+    @staticmethod
+    def vertical_bidirectional_triple_mask(grid, X, Y, _min, _max, x, width):
+        _mask_1 = ((X > x) * (X < x + width) \
+            * (Y >= _min) * (Y <= _max))[None,:,:].to(grid.ftype)
+        _mask_2 = ((X > x + width) * (X < x + 2 * width) \
+            * (Y >= _min) * (Y <= _max))[None,:,:].to(grid.ftype)
+        _mask_3 = ((X > x + 2 * width) * (X < x + 3 * width) \
+            * (Y >= _min) * (Y <= _max))[None,:,:].to(grid.ftype) 
+        _mask_ramp = _mask_1 * (X - x) / width \
+            + _mask_3 * ((x + 3 * width) - X) / width
+            
+        return _mask_1, _mask_2, _mask_ramp
+    
+    
+    @staticmethod
+    def horizontal_bidirectional_double_mask(grid, X, Y, _min, _max, y, width):
+        _mask_1 = ((Y > y) * (Y < y + width) \
+            * (X >= _min) * (X <= _max))[None,:,:].to(grid.ftype)
+        _mask_2 = ((Y > y + width) * (Y < y + 2 * width) \
+            * (X >= _min) * (X <= _max))[None,:,:].to(grid.ftype)
+        
+        _mask_ramp = \
+            _mask_1  * (Y - y) / width + \
+            _mask_2 * ((y + 2 * width) - Y) / width
+            
+        return _mask_ramp
+    
     @staticmethod
     def horizontal_bidirectional_triple_mask(grid, X, Y, _min, _max, y, width):
         _mask_1 = ((Y > y) * (Y < y + width) \
@@ -73,43 +119,78 @@ class Region:
     
     @staticmethod
     @lru_cache(maxsize=1)
-    def outlet_double_mask_r(grid, _min, _max, width): # right outlet mask
+    def outlet_mask_r(grid, _min, _max, width, type='single'): # right outlet mask
         x = torch.linspace(0, 1, grid.Nx,device=grid.device)
         y = torch.linspace(0, 1, grid.Ny,device=grid.device)
         X, Y = x[None,:],y[:,None]
-        return Region.vertical_outlet_double_mask(grid, X,  Y, _min, _max, 1 - 2 * width, width)
+        
+        match type:
+            case 'single':
+                return Region.vertical_outlet_single_mask(grid, X,  Y, _min, _max, 1 - width, width)
+            case 'double':
+                return Region.vertical_outlet_double_mask(grid, X,  Y, _min, _max, 1 - 2 * width, width)
     
     @staticmethod
     @lru_cache(maxsize=1)
-    def outlet_double_mask_rtd(grid, _min, _max, width):
+    def outlet_mask_rtd(grid, _min, _max, width, type='single'):
         
         x = torch.linspace(0, 1, grid.Nx,device=grid.device)
         y = torch.linspace(0, 1, grid.Ny,device=grid.device)
         X, Y = x[None,:],y[:,None]
             
-        _outlet_1, _outlet_2, _outlet_ramp = Region.vertical_outlet_double_mask(grid, X,  Y, _min, _max, 1 - 2 * width, width)
-        _bidirect_1, _bidirect_2, _bidirect_ramp = Region.horizontal_bidirectional_triple_mask(grid, X, Y, _min, _max, 1 - 3*width, width) # just above lower image boundary
-        return (_outlet_1 + _bidirect_1, _outlet_2 + _bidirect_2, _outlet_ramp + _bidirect_ramp)
+        match type:
+            case 'single':
+                _outlet_ramp = Region.vertical_outlet_single_mask(grid, X,  Y, _min, _max, 1 - width, width)
+                _birect_ramp = Region.horizontal_bidirectional_double_mask(grid, X, Y, _min, _max, 1 - 2 * width, width) # just above lower image boundary
+                return _outlet_ramp + _birect_ramp
+            
+            case 'double': 
+                _outlet_1, _outlet_2, _outlet_ramp = Region.vertical_outlet_double_mask(grid, X,  Y, _min, _max, 1 - 2 * width, width)
+                _bidirect_1, _bidirect_2, _bidirect_ramp = Region.horizontal_bidirectional_triple_mask(grid, X, Y, _min, _max, 1 - 3*width, width) # just above lower image boundary
+                return (_outlet_1 + _bidirect_1, _outlet_2 + _bidirect_2, _outlet_ramp + _bidirect_ramp)
+            
+            case 'triple': 
+                _outlet_1, _outlet_2, _outlet_ramp = Region.vertical_bidirectional_triple_mask(grid, X,  Y, _min, _max, 1 - 3 * width, width)
+                _bidirect_1, _bidirect_2, _bidirect_ramp = Region.horizontal_bidirectional_triple_mask(grid, X, Y, _min, _max, 1 - 3*width, width) # just above lower image boundary
+                return (_outlet_1 + _bidirect_1, _outlet_2 + _bidirect_2, _outlet_ramp + _bidirect_ramp)
 
 ### 
 class BC:
     @staticmethod
-    def const_outlet_r(state, grid, derivative, 
+    def const_outlet_vorticity_r(state, grid, derivative, 
                         inlet_velocity=1.0, _min=0.0, _max=1.0, eta=4.0,
                         width = 0.05,                 
                         **kwargs):
-        return Sponge.double_sponge(state, derivative, eta, 
-                                    Region.outlet_double_mask_r(grid, _min, _max, width),
+        return Sponge.vorticity_sponge(state, derivative, eta, 
+                                    Region.outlet_mask_r(grid, _min, _max, width, type='single'),
                                     *Flow.const_x_flow(state, inlet_velocity))
         
 
     @staticmethod
-    def const_outlet_rtd(state, grid, derivative, 
+    def const_outlet_vorticity_rtd(state, grid, derivative, 
                         inlet_velocity=1.0, _min=0.0, _max=1.0, eta=4.0,
                         width = 0.05,                 
                         **kwargs):
-        return Sponge.double_sponge(state, derivative, eta, 
-                                       Region.outlet_double_mask_rtd(grid, _min, _max, width),
+        return Sponge.vorticity_sponge(state, derivative, eta, 
+                                       Region.outlet_mask_rtd(grid, _min, _max, width, type='single'),
+                                       *Flow.const_x_flow(state, inlet_velocity))
+    @staticmethod
+    def const_outlet_diffuse_r(state, grid, derivative, 
+                        inlet_velocity=1.0, _min=0.0, _max=1.0, eta=4.0,
+                        width = 0.05,                 
+                        **kwargs):
+        return Sponge.diffuse_sponge(state, derivative, eta, 
+                                    Region.outlet_mask_r(grid, _min, _max, width, type='double'),
+                                    *Flow.const_x_flow(state, inlet_velocity))
+        
+
+    @staticmethod
+    def const_outlet_diffuse_rtd(state, grid, derivative, 
+                        inlet_velocity=1.0, _min=0.0, _max=1.0, eta=4.0,
+                        width = 0.05,                 
+                        **kwargs):
+        return Sponge.diffuse_sponge(state, derivative, eta, 
+                                       Region.outlet_mask_rtd(grid, _min, _max, width, type='triple'),
                                        *Flow.const_x_flow(state, inlet_velocity))
 
     @staticmethod
@@ -123,8 +204,10 @@ valid_bc = lambda _bc: hasattr(_bc, 'function') and _bc.function in bc_library
 
 bc_library = {
     'periodic': BC.none,
-    'const-outlet-r': BC.const_outlet_r,
-    'const-outlet-rtd': BC.const_outlet_rtd,
+    'const-outlet-vorticity-r': BC.const_outlet_vorticity_r,
+    'const-outlet-vorticity-rtd': BC.const_outlet_vorticity_rtd,
+    'const-outlet-diffuse-r': BC.const_outlet_diffuse_r,
+    'const-outlet-diffuse-rtd': BC.const_outlet_diffuse_rtd,
 }
 
 solve_bc = lambda _bc: (lambda *args: bc_library[_bc.function](*args, **_bc.__dict__)) if valid_bc(_bc) else _bc

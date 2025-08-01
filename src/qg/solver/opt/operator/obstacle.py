@@ -67,7 +67,7 @@ def brinkman_no_slip_penalty(op, state, chi, chi_velocity):
     
     sponge = (1j * op.derivative.kr * v_chi_h - 1j * op.derivative.ky * u_chi_h) / eta # - d/dx(chi*v) + d/dy(chi*u)
     
-    return op.derivative.dealias(sponge)
+    return sponge
 
 def brinkman_friction_slip_penalty(op, state, chi, chi_velocity):
     """
@@ -118,7 +118,7 @@ def brinkman_friction_slip_penalty(op, state, chi, chi_velocity):
     state.uh = to_spectral(u_corr)
     state.vh = to_spectral(v_corr)
     
-    return op.derivative.dealias(sponge)
+    return sponge
 
 # def inlet_outlet(op, state,
 #                     inlet_velocity=1.0, mn=0.4, mx=0.6, eta=2.0,

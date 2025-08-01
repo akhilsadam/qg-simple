@@ -86,7 +86,7 @@ class QG():
                 
         return solution
     
-    def solve(self, save_path, name='DNS'): # for direct user call
+    def solve(self, save_path, name='DNS', clamp=0.3): # for direct user call
         if hasattr(self.param, 'profile') and self.param.profile:
             self.logger.info(f"Profiling enabled.")
             from torch.profiler import profile, ProfilerActivity, record_function
@@ -111,9 +111,9 @@ class QG():
         draw.mp4(os.path.join(save_path,f'{name}.mp4'), solution_b,
                    fps=self.param.fps, triplet=True)
         draw.mp4(os.path.join(save_path,f'{name}_clamped.mp4'), solution_b,
-                   fps=self.param.fps, triplet=True, clamp=0.3)
+                   fps=self.param.fps, triplet=True, clamp=clamp)
         draw.mp4(os.path.join(save_path,f'{name}_seismic.mp4'), solution_b,
-                   fps=self.param.fps, triplet=True, cmap='seismic', clamp=0.3)  
+                   fps=self.param.fps, triplet=True, cmap='seismic', clamp=clamp)  
         
         # draw.mp4(os.path.join(save_path,'DNS.mp4'), solution_b,
         #            fps=20, triplet=False, mn = [4,1])
