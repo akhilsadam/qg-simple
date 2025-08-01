@@ -106,6 +106,7 @@ class config:
     forcing: forcing = forcing()
     mask : mask = mask()
     fps: int = 20 # frames per second for video output
+    profile: bool = False # whether to profile the run
 
 @design
 class gconfig:
@@ -125,6 +126,8 @@ class validate():
         self.fps = param.fps
        
         self.ic.seed = param.seed 
+        
+        self.profile = param.profile
 
         
     def solve(self):

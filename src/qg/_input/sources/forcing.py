@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from qg.solver.opt.basis import to_physical, to_spectral, dealias
+from qg.solver.opt.basis import to_physical, to_spectral
 
 # Generates forcing based on specified wavenumber and time effects
 def unscaled_cosine(state, grid, derivative, 
@@ -15,7 +15,7 @@ def unscaled_cosine(state, grid, derivative,
         + D * (torch.cos(E * Y + F * state.t)) [None,:,:]
     
     wh = to_spectral(w)
-    return dealias(wh,derivative,1/3)
+    return derivative.dealias(wh)
 
 ####################################################################################################
 

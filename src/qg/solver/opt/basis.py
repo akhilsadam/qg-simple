@@ -1,6 +1,5 @@
 import torch
 import numpy as np
-import math
 
 class _state:
     def __init__(self, qh, dt, derivative):
@@ -64,22 +63,21 @@ def to_spectral(physical_field):
     return torch.fft.rfftn(physical_field,dim=(-2, -1),norm='forward')
 
 
-def dealias(y, spectral_derivative, dealias_factor=1/3):
+def dealias(y, derivative, dealias_factor=1/3):
     """
     Apply dealiasing to the field based on the ratio (usually 1/3 rule).
     The field's high-frequency components are truncated.
     
     Args:
     - y: tensor in spectral space to apply dealiasing.
-    - spectral_derivative: SpectralOperator instance to access ky, kr, and krsq.
+    - derivative: SpectralOperator instance to access ky, kr, and krsq.
     - dealias_factor: factor to apply the dealiasing (default is 1/3).
     
     Returns:
     - y: tensor with high frequencies removed.
     """
-    kcut = math.sqrt(2) * (1 - dealias_factor) * min(spectral_derivative.ky.max(), spectral_derivative.kr.max())
     
     # Apply dealiasing: set high-frequency components to zero
-    y[torch.sqrt(spectral_derivative.krsq).expand_as(y) > kcut] = 0
+    y[derivative.alias_mask.expand_as(y)] = 0
     
     return y

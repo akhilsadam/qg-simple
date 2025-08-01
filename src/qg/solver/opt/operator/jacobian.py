@@ -1,5 +1,5 @@
 import torch
-from qg.solver.opt.basis import to_physical, to_spectral, dealias
+from qg.solver.opt.basis import to_physical, to_spectral
 
 def jacobian_pq(op, state):
     """
@@ -17,10 +17,7 @@ def jacobian_pq(op, state):
     
     jacobian = 1j * op.derivative.kr * uqh + 1j * op.derivative.ky * vqh # - d/dx(u*q) - d/dy(v*q)
     
-    return dealias(
-        jacobian,  
-        op.derivative,
-        1/3)
+    return op.derivative.dealias(jacobian)
     
 def advection_uv(op, state):
     ''' - (u . del) u '''
@@ -53,13 +50,7 @@ def advection_uv(op, state):
     # x_adv = - (state.uh * dudx + state.vh * dudy)
     # y_adv = - (state.uh * dvdx + state.vh * dvdy)
     
-    return dealias(
-        x_advh,  
-        op.derivative,
-        1/3), \
-        dealias(
-        y_advh,  
-        op.derivative,
-        1/3)
+    return op.derivative.dealias(x_advh), \
+        op.derivative.dealias(y_advh)
 
     

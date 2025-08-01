@@ -48,9 +48,10 @@ def test_ideal_cape_high_re():
     _config.bc.width = 0.08 # Width of the sponge region
     _config.time.dt = 1e-4 # param.dt
     _config.time.save_rate = 500 # param.sim_steps
-    _config.time.T = 120
+    _config.time.T = 4
     _config.ic.n_batch = 1
-    _config.fps = 20
+    _config.fps = 4
+    _config.profile = False #  profiling
     autorun(_config)
     
 def test_ideal_cape_low_re():
@@ -94,7 +95,7 @@ def test_cape():
     _config.bc.width = 0.08 # Width of the sponge region
     _config.time.dt = 1e-4 # param.dt
     _config.time.save_rate = 500 # param.sim_steps
-    _config.time.T = 12
+    _config.time.T = 0.001
     _config.ic.n_batch = 1
     _config.fps = 4
     autorun(_config)

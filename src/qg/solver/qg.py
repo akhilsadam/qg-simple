@@ -11,7 +11,7 @@ import qg._input.validate_configuration as vc
 
 from qg.solver.grid.cartesian import CartesianGrid
 from qg.solver.opt.derivative import Derivative
-from qg.solver.opt.operator import ImplicitLinearOperator, define_explict_operator
+from qg.solver.opt.operator import ImplicitLinearOperator, define_explicit_operator
 
 from qg.solver.opt.operator.jacobian import advection_uv
 
@@ -34,11 +34,12 @@ class QG():
 
         self.param = param
         self.logger = logger
+        self.logger.addHandler(logging.StreamHandler())
         
         self.grid = grid(**param.grid.__dict__)
         self.derivative = derivative(self.grid)
         self.implicit_linear_operator = implicit_linear_operator(self.grid, self.derivative, param.pde)
-        self.operator = define_explict_operator(param, self.grid, self.derivative, self.logger,
+        self.operator = define_explicit_operator(param, self.grid, self.derivative, self.logger,
                                         args=(param.time.dt, self.grid, self.derivative, param.pde),
                                         sources=explicit_sources) 
         
@@ -63,7 +64,7 @@ class QG():
     def init(self):  
         return _state(self.param.ic(self.grid, self.derivative), self.dt, self.derivative) # In spectral space
           
-    def _run(self):
+    def _run(self, prof=None):
         save_rate = self.param.time.save_rate
         steps = int(self.param.time.T / self.dt)  # Number of time steps
         
@@ -78,13 +79,28 @@ class QG():
             if (it+1) % save_rate == 0:
                 save_index = (it + 1) // save_rate
                 solution[:, save_index, ...] = state.out() # B T C H W
+            
+            if prof is not None:
+                prof.step()  # Step the profiler
+            
                 
         return solution
     
     def solve(self, save_path, name='DNS'): # for direct user call
-        solution_torch = self._run()
+        if hasattr(self.param, 'profile') and self.param.profile:
+            self.logger.info(f"Profiling enabled.")
+            from torch.profiler import profile, ProfilerActivity, record_function
+            with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],record_shapes=True, with_stack=True) as prof:
+                with record_function("_run"):
+                    solution_torch = self._run(prof)            
+            print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=-1))
+            prof.export_chrome_trace(os.path.join(save_path, f'{name}_trace.json'))
+            self.logger.info(f"Profile trace saved at {os.path.join(save_path, f'{name}_trace.json')}")
+        else:
+            solution_torch = self._run()
         solution = solution_torch.cpu().numpy()
         self.logger.info(f"Simulation complete.")
+            
         
         np.save(os.path.join(save_path,f'{name}.npy'), solution)
         self.logger.info(f"Simulation saved at {save_path}")
@@ -106,9 +122,9 @@ class QG():
         # draw.mp4(os.path.join(save_path,'DNS_seismic.mp4'), solution_b,
         #            fps=20, triplet=False, mn = [4,1], cmap='seismic', clamp=0.3)    
         
-        # make streamlines from the vorticity field
-        draw.streamlines(os.path.join(save_path,f'{name}_streamlines.mp4'), solution_b[:,:,1,...], -solution_b[:,:,2,...], 
-                         fps=self.param.fps) # u, -v
+        # # make streamlines from the vorticity field
+        # draw.streamlines(os.path.join(save_path,f'{name}_streamlines.mp4'), solution_b[:,:,1,...], -solution_b[:,:,2,...], 
+        #                  fps=self.param.fps) # u, -v
         
         
         
