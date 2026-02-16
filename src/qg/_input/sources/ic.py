@@ -1,7 +1,15 @@
 import torch
 
+# CU compatibility workaround
+def abs(x):
+    if x.is_cuda:
+        return torch.sqrt(x.real**2 + x.imag**2)
+    else:
+        return torch.abs(x)
+
+
 def int_sq(y, grid):
-    Y = torch.sum(torch.abs(y[:, 0])**2) + 2*torch.sum(torch.abs(y[:, 1:])**2)
+    Y = torch.sum(abs(y[:, 0])**2) + 2*torch.sum(abs(y[:, 1:])**2)
     n = grid.Lx * grid.Ly  # Use grid object for Lx and Ly
     return Y * n
 
