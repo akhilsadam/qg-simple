@@ -25,4 +25,7 @@ fc_library = {
     'unscaled_cosine': unscaled_cosine,
 }
 
-solve_forcing = lambda _fc: (lambda *args: fc_library[_fc.function](*args, **_fc.__dict__)) if valid_fc(_fc) else _fc
+def solve_forcing(_fc):
+    if _fc is None or not isinstance(_fc, dict) or 'function' not in _fc or _fc['function'] not in fc_library:
+        return _fc
+    return lambda *args: fc_library[_fc['function']](*args, **_fc)

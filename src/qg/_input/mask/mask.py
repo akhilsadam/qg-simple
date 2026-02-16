@@ -198,5 +198,8 @@ nc_library = {
 }
         
 
-solve_mask = lambda _mask: (lambda *args: mask_library[_mask.function](*args, **_mask.__dict__)) if valid_mask(_mask) else _mask
+def solve_mask(_mask):
+    if _mask is None or not isinstance(_mask, dict) or 'function' not in _mask or _mask['function'] not in mask_library:
+        return _mask
+    return lambda *args: mask_library[_mask['function']](*args, **_mask)
 

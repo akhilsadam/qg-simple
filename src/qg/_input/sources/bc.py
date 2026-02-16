@@ -6,20 +6,26 @@ from functools import lru_cache
 
 class Sponge:
     @staticmethod
-    def vorticity_sponge(state, derivative, eta, mask, uh, vh):
+    def vorticity_sponge(state, derivative, sponge, mask, uh, vh):
+        if sponge <= 0:
+            print("Warning: sponge must be positive for sponge layer to work effectively.")
+            return 0
         
         _ramp = mask
-        _eta = eta * state.dt
+        _eta = sponge * state.dt
         
         ### vorticity / open bc
-        outlet_vorticity_sponge = to_spectral(_ramp * to_physical(1j * derivative.kr * state.vh - 1j * derivative.ky * state.uh)) / _eta
+        outlet_vorticity_sponge = - to_spectral(_ramp * to_physical(state.qh)) / _eta
         return outlet_vorticity_sponge
     
     @staticmethod
-    def diffuse_sponge(state, derivative, eta, masks, uh, vh):
+    def diffuse_sponge(state, derivative, sponge, masks, uh, vh):
+        if sponge <= 0:
+            print("Warning: sponge must be positive for sponge layer to work effectively.")
+            return 0
         
         _outlet_v1, _outlet_v2, _outlet_v1_ramp = masks
-        _eta = eta * state.dt
+        _eta = sponge * state.dt
         
         ### velocity / closed bc
         masked_vh_delta = to_spectral(_outlet_v2 * to_physical(state.vh - vh)) 
@@ -39,12 +45,12 @@ class Flow:
         @lru_cache(maxsize=1)
         def base_flow():
             flow_uh = torch.zeros_like(state.uh)
-            flow_uh[...,0,0] = -inlet_velocity # direction flip
+            flow_uh[...,0,0] = inlet_velocity
             flow_vh = flow_uh * 0.0
             return flow_uh, flow_vh
         
         flow_uh, flow_vh = base_flow()
-        state.uh[...,0,0] = -inlet_velocity # direction flip
+        state.uh[...,0,0] = inlet_velocity
         state.vh[...,0,0] = 0.0
         
         return flow_uh, flow_vh
@@ -158,38 +164,38 @@ class Region:
 class BC:
     @staticmethod
     def const_outlet_vorticity_r(state, grid, derivative, 
-                        inlet_velocity=1.0, _min=0.0, _max=1.0, eta=4.0,
+                        inlet_velocity=1.0, _min=0.0, _max=1.0, sponge=4.0,
                         width = 0.05,                 
                         **kwargs):
-        return Sponge.vorticity_sponge(state, derivative, eta, 
+        return Sponge.vorticity_sponge(state, derivative, sponge,
                                     Region.outlet_mask_r(grid, _min, _max, width, type='single'),
                                     *Flow.const_x_flow(state, inlet_velocity))
         
 
     @staticmethod
     def const_outlet_vorticity_rtd(state, grid, derivative, 
-                        inlet_velocity=1.0, _min=0.0, _max=1.0, eta=4.0,
+                        inlet_velocity=1.0, _min=0.0, _max=1.0, sponge=4.0,
                         width = 0.05,                 
                         **kwargs):
-        return Sponge.vorticity_sponge(state, derivative, eta, 
+        return Sponge.vorticity_sponge(state, derivative, sponge,
                                        Region.outlet_mask_rtd(grid, _min, _max, width, type='single'),
                                        *Flow.const_x_flow(state, inlet_velocity))
     @staticmethod
     def const_outlet_diffuse_r(state, grid, derivative, 
-                        inlet_velocity=1.0, _min=0.0, _max=1.0, eta=4.0,
+                        inlet_velocity=1.0, _min=0.0, _max=1.0, sponge=4.0,
                         width = 0.05,                 
                         **kwargs):
-        return Sponge.diffuse_sponge(state, derivative, eta, 
+        return Sponge.diffuse_sponge(state, derivative, sponge,
                                     Region.outlet_mask_r(grid, _min, _max, width, type='double'),
                                     *Flow.const_x_flow(state, inlet_velocity))
         
 
     @staticmethod
     def const_outlet_diffuse_rtd(state, grid, derivative, 
-                        inlet_velocity=1.0, _min=0.0, _max=1.0, eta=4.0,
+                        inlet_velocity=1.0, _min=0.0, _max=1.0, sponge=4.0,
                         width = 0.05,                 
                         **kwargs):
-        return Sponge.diffuse_sponge(state, derivative, eta, 
+        return Sponge.diffuse_sponge(state, derivative, sponge,
                                        Region.outlet_mask_rtd(grid, _min, _max, width, type='triple'),
                                        *Flow.const_x_flow(state, inlet_velocity))
 
@@ -210,4 +216,7 @@ bc_library = {
     'const-outlet-diffuse-rtd': BC.const_outlet_diffuse_rtd,
 }
 
-solve_bc = lambda _bc: (lambda *args: bc_library[_bc.function](*args, **_bc.__dict__)) if valid_bc(_bc) else _bc
+def solve_bc(_bc):
+    if _bc is None or not isinstance(_bc, dict) or 'function' not in _bc or _bc['function'] not in bc_library:
+        return _bc
+    return lambda *args: bc_library[_bc['function']](*args, **_bc)

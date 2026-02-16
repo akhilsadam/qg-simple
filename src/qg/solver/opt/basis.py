@@ -13,22 +13,22 @@ class _state:
         
     def update_uv(self):
         self.ph = - self.qh * self.derivative.irsq
-        self.uh = 1j * self.derivative.ky * self.ph
-        self.vh = -1j * self.derivative.kr * self.ph
+        self.uh = - self.derivative.dy * self.ph
+        self.vh = self.derivative.dx * self.ph
         
-    def update_potential_flow(self):    
-        self.uh = self.uh + self.uh_p + self.x_adv * self.dt
-        self.vh = self.vh + self.vh_p + self.y_adv * self.dt
+    # def update_potential_flow(self):    
+    #     self.uh = self.uh + self.uh_p + self.x_adv * self.dt
+    #     self.vh = self.vh + self.vh_p + self.y_adv * self.dt
         
-    def update_qp(self):
-        self.qh = - 1j * self.derivative.kr * self.vh + 1j * self.derivative.ky * self.uh
-        self.ph = - self.qh * self.derivative.irsq
+    # def update_qp(self):
+    #     self.qh = - 1j * self.derivative.kr * self.vh + 1j * self.derivative.ky * self.uh
+    #     self.ph = - self.qh * self.derivative.irsq
         
-        uh_w = 1j * self.derivative.ky * self.ph
-        vh_w = -1j * self.derivative.kr * self.ph
+    #     uh_w = 1j * self.derivative.ky * self.ph
+    #     vh_w = -1j * self.derivative.kr * self.ph
         
-        self.uh_p = self.uh - uh_w
-        self.vh_p = self.vh - vh_w
+    #     self.uh_p = self.uh - uh_w
+    #     self.vh_p = self.vh - vh_w
         
     def update_t(self):
         self.t += self.dt

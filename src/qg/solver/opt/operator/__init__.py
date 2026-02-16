@@ -7,9 +7,7 @@ from qg.solver.opt.operator.vortex import vortex_stretching
 def define_explicit_operator(param, grid, derivative, logger, args, sources, **kwargs):
     patches = []
     
-        
     if param.bc is not None:
-        logger.info(f"Boundary condition")
         patches.append(lambda op, state: param.bc(state, grid, derivative))
     
     if param.forcing is not None:
@@ -28,9 +26,9 @@ def define_explicit_operator(param, grid, derivative, logger, args, sources, **k
         mask = solve_mask(param.mask, grid, derivative)
         patches.append(lambda op, state: brinkman_penalty(op, state, *mask(op, state)))
         
-    if param.pde.rossby_radius is not None:
-        logger.info("Using vortex stretching operator")
-        patches.append(vortex_stretching)
+    # if param.pde.rossby_radius is not None:
+    #     logger.info("Using vortex stretching operator")
+    #     patches.append(vortex_stretching)
 
     patches.extend(sources)
             
@@ -66,7 +64,7 @@ class ImplicitLinearOperator(_Math):
         mu = self.params.mu
         B = self.params.B
         # Calculate the linear term (first one is diffusion, then bottom drag, then Coriolis with beta term)
-        return -nu * self.derivative.krsq - mu - 1j * B * self.derivative.kr * self.derivative.irsq
+        return -nu * self.derivative.krsq - mu + B * self.derivative.dx * self.derivative.irsq
 
     def __repr__(self):
         return (f"ImplictLinearOperator(nu={self.params.nu}, mu={self.params.mu},"

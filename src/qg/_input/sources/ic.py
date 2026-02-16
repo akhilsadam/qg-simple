@@ -6,7 +6,7 @@ def int_sq(y, grid):
     return Y * n
 
 # Generates initial conditions based on specified energy and wavenumber limits
-def _init_randn(grid, spectral_derivative,
+def _init_randn(grid, derivative,
                 energy=0.0, wavenumbers=[3.0, 5.0], n_batch = 1,
                 seed=86, persistent=True,
                 **kwargs):
@@ -16,9 +16,9 @@ def _init_randn(grid, spectral_derivative,
     
     torch.manual_seed(seed)
     
-    # Use spectral_derivative for kr, ky, and krsq
-    K = torch.sqrt(spectral_derivative.krsq).repeat(n_batch, 1, 1)  # Wavenumber of each point in frequency space
-    k = spectral_derivative.kr.repeat(n_batch, grid.Ny, 1)                # Ensure proper shape for k
+    # Use derivative for kr, ky, and krsq
+    K = torch.sqrt(derivative.krsq).repeat(n_batch, 1, 1)  # Wavenumber of each point in frequency space
+    k = derivative.kx.repeat(n_batch, grid.Ny, 1)                # Ensure proper shape for k
 
     # Generate random complex field in spectral space
     qih = torch.randn(k.size(), dtype=torch.complex128).to(grid.device)
@@ -30,8 +30,8 @@ def _init_randn(grid, spectral_derivative,
     
     # Normalize initial condition energy
     E0 = energy
-    Ei = 0.5 * (int_sq(spectral_derivative.kr * spectral_derivative.irsq * qih, grid) +
-                int_sq(spectral_derivative.ky * spectral_derivative.irsq * qih, grid)) / (grid.Lx * grid.Ly)
+    Ei = 0.5 * (int_sq(derivative.kx * derivative.irsq * qih, grid) +
+                int_sq(derivative.ky * derivative.irsq * qih, grid)) / (grid.Lx * grid.Ly)
     
     # Scale to the desired energy
     qih *= torch.sqrt(E0 / Ei)
@@ -39,6 +39,9 @@ def _init_randn(grid, spectral_derivative,
     # Store the initial condition for persistent use
     if persistent:
         globals()['ic_'] = qih.detach().clone()
+    
+    # print("Initial condition energy:", E0)
+    # print(torch.max((qih).abs()), torch.min((qih).abs()))
     
     return qih
 
@@ -50,4 +53,7 @@ ic_library = {
     'randn': _init_randn,
 }
 
-solve_ic = lambda _ic: (lambda *args: ic_library[_ic.function](*args, **_ic.__dict__)) if valid_ic(_ic) else _ic
+def solve_ic(_ic):
+    if _ic is None or not isinstance(_ic, dict) or 'function' not in _ic or _ic['function'] not in ic_library:
+        return _ic
+    return lambda *args: ic_library[_ic['function']](*args, **_ic)

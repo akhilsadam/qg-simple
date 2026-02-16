@@ -4,10 +4,10 @@ import torch.nn.functional as F
 import numpy as np
 
 from tqdm import tqdm
-from qg.solver.opt.basis import _state, to_spectral
+from qg.solver.opt.basis import _state, to_spectral, to_physical
 from qg.solver.integrator.imex import CN2, AB2
 
-import qg._input.validate_configuration as vc
+import qg.config as vc
 
 from qg.solver.grid.cartesian import CartesianGrid
 from qg.solver.opt.derivative import Derivative
@@ -19,8 +19,7 @@ import os
 import logging
 import jpcm.draw as draw
 
-# TODO enable float32/64 precision
-# TODO enable Sponge
+from omegaconf import DictConfig, OmegaConf
 
 class QG():
     def __init__(self, param,
@@ -30,13 +29,15 @@ class QG():
                  explicit_sources = [],
                  logger = logging.getLogger(__name__)):
         
+        # DictConfig already supports attribute access, so just use it directly
+        # No need to convert - validate() expects object with attributes
+        
         param = vc.validate(param).solve()
-
         self.param = param
         self.logger = logger
         self.logger.addHandler(logging.StreamHandler())
         
-        self.grid = grid(**param.grid.__dict__)
+        self.grid = grid(**param.grid)
         self.derivative = derivative(self.grid)
         self.implicit_linear_operator = implicit_linear_operator(self.grid, self.derivative, param.pde)
         self.operator = define_explicit_operator(param, self.grid, self.derivative, self.logger,
@@ -56,6 +57,9 @@ class QG():
         # potential flow velocity step
         # state.x_adv, state.y_adv = advection_uv(self.operator, state)
         
+        # print(torch.max(to_physical(explicit_source)), torch.min(to_physical(explicit_source)))
+        # print(torch.max(to_physical(state.qh)), torch.min(to_physical(state.qh)))
+        
         # update fields
         state.update_uv()
         # state.update_potential_flow() # also potential_flow
@@ -69,6 +73,8 @@ class QG():
         steps = int(self.param.time.T / self.dt)  # Number of time steps
         
         state = self.init()
+        
+        # print(torch.max(to_physical(state.qh)), torch.min(to_physical(state.qh)))
         
         B = state.qh.shape[0]  # Number of batches
         solution = torch.zeros([B, int(steps/save_rate)+1, 4, self.grid.Ny, self.grid.Nx])
@@ -106,7 +112,7 @@ class QG():
         self.logger.info(f"Simulation saved at {save_path}")
         
         # select a couple batches for visualization (permute 0,1 axes)
-        solution_b = np.transpose(solution[0:4, ...],(1,0,2,3,4))  # T (selected_B) C H W
+        solution_b = np.transpose(solution[0:4,:,:1,...],(1,0,2,3,4))  # T (selected_B) C H W
 
         draw.mp4(os.path.join(save_path,f'{name}.mp4'), solution_b,
                    fps=self.param.fps, triplet=True)

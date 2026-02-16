@@ -7,8 +7,8 @@ class Derivative:
         self.grid = grid
         self.device = grid.device
 
-        self.dx =  grid.Lx / (grid.Nx)
-        self.dy =  grid.Ly / (grid.Ny)
+        self._dx =  grid.Lx / (grid.Nx)
+        self._dy =  grid.Ly / (grid.Ny)
         
 
         # Number of wavenumber components (half of real grid in x-direction)
@@ -21,12 +21,15 @@ class Derivative:
         )[None,:,:].to(self.device) 
         
         # Derivative in x
-        self.kr = torch.reshape((torch.fft.rfftfreq(grid.Nx, grid.Lx / (grid.Nx * 2 * torch.pi))), 
+        self.kx = torch.reshape((torch.fft.rfftfreq(grid.Nx, grid.Lx / (grid.Nx * 2 * torch.pi))), 
             (1, self.dk)
-        )[None,:,:].to(self.device)
+        )[None,:,:].to(self.device) # also kr (radial)
+        
+        self.dx = 1j * self.kx
+        self.dy = 1j * self.ky
 
         # Squared wavenumbers (for second derivatives)
-        self.krsq = self.kr**2 + self.ky**2  
+        self.krsq = self.kx**2 + self.ky**2  
 
         # Inverse squared wavenumbers (and handling zero division)
         self.irsq = 1.0/self.krsq
@@ -34,7 +37,7 @@ class Derivative:
         
         # Dealiasing wavenumber for stability and mask
         dealias_factor=1/3
-        self.k_cut = math.sqrt(2) * (1 - dealias_factor) * min(self.ky.max(), self.kr.max())
+        self.k_cut = math.sqrt(2) * (1 - dealias_factor) * min(self.ky.max(), self.kx.max())
         
         self.sqrt_krsq = torch.sqrt(self.krsq)
         self.alias_mask = (self.sqrt_krsq > self.k_cut)
@@ -60,8 +63,10 @@ class Derivative:
     def to(self, device):
         """ Move spectral operator tensors to another device. """
         self.device = device
+        self.dx = self.dx.to(device)
+        self.dy = self.dy.to(device)
+        self.kx = self.kx.to(device)
         self.ky = self.ky.to(device)
-        self.kr = self.kr.to(device)
         self.krsq = self.krsq.to(device)
         self.irsq = self.irsq.to(device)
 

@@ -15,7 +15,7 @@ def jacobian_pq(op, state):
     uqh = to_spectral(uq)
     vqh = to_spectral(vq)
     
-    jacobian = 1j * op.derivative.kr * uqh + 1j * op.derivative.ky * vqh # - d/dx(u*q) - d/dy(v*q)
+    jacobian = - op.derivative.dx * uqh - op.derivative.dy * vqh # - d/dx(u*q) - d/dy(v*q)
     
     return jacobian
     

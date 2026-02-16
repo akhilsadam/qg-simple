@@ -1,7 +1,7 @@
 [project]
 name = "quasigeostrophic-flow"
-version = "0.1.0"
-description = ""
+version = "0.2.0"
+description = "QG turbulence simulation with Hydra and WandB tracking"
 authors = [
     {name = "Akhil Sadam", email = "sadam.akhil@gmail.com"}
 ]
@@ -20,10 +20,10 @@ dependencies = [
     "jpcm",
     "pyyaml",
     "pytest",
-    "mura>=0.2.4",
+    "mura>=0.3.0",
     "netcdf4",
-    # optional
-    # "mura", # for deploy scripts; obsoleted here...
+    "hydra-core",
+    "omegaconf",
 ]
 
 [options.packages.find]
