@@ -15,7 +15,7 @@ def jacobian_pq(op, state):
     uqh = to_spectral(uq)
     vqh = to_spectral(vq)
     
-    jacobian = - op.derivative.dx * uqh - op.derivative.dy * vqh # - d/dx(u*q) - d/dy(v*q)
+    jacobian = -1 * op.derivative.dx * uqh - op.derivative.dy * vqh # - d/dx(u*q) - d/dy(v*q)
     
     return jacobian
     
@@ -33,8 +33,8 @@ def advection_uv(op, state):
     dvdy, dvdx = torch.gradient(v_p, dim=(-2,-1), spacing=(op.derivative.dy, op.derivative.dx))
     # faster than two ffts?
     
-    x_adv = - (u * dudx + v * dudy)
-    y_adv = - (u * dvdx + v * dvdy)
+    x_adv = -1 * (u * dudx + v * dudy)
+    y_adv = -1 * (u * dvdx + v * dvdy)
     
     x_advh = to_spectral(x_adv)
     y_advh = to_spectral(y_adv)

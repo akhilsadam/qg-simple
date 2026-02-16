@@ -97,7 +97,7 @@ def brinkman_friction_slip_penalty(op, state, chi, chi_velocity):
     u_chi_h = to_spectral(u_chi)
     v_chi_h = to_spectral(v_chi)
     
-    sponge = (- op.derivative.dx * v_chi_h + op.derivative.dy * u_chi_h) / eta # - d/dx(chi*v) + d/dy(chi*u)
+    sponge = (-1 * op.derivative.dx * v_chi_h + op.derivative.dy * u_chi_h) / eta # - d/dx(chi*v) + d/dy(chi*u)
     
     
     # modify flow field inside obstacle

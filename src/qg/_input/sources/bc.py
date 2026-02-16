@@ -15,7 +15,7 @@ class Sponge:
         _eta = sponge * state.dt
         
         ### vorticity / open bc
-        outlet_vorticity_sponge = - to_spectral(_ramp * to_physical(state.qh)) / _eta
+        outlet_vorticity_sponge = -1 * to_spectral(_ramp * to_physical(state.qh)) / _eta
         return outlet_vorticity_sponge
     
     @staticmethod
