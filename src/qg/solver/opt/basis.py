@@ -12,8 +12,8 @@ class _state:
             self.update_uv()
         
     def update_uv(self):
-        self.ph = - self.qh * self.derivative.irsq
-        self.uh = - self.derivative.dy * self.ph
+        self.ph = -1 * self.qh * self.derivative.irsq
+        self.uh = -1 * self.derivative.dy * self.ph
         self.vh = self.derivative.dx * self.ph
         
     # def update_potential_flow(self):    
