@@ -1,5 +1,5 @@
 auto/
-run/
+runs/
 wandb/
 __pycache__
 **.ipynb

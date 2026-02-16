@@ -1,25 +1,27 @@
 # @package _global_
-# Forced turbulence scenario with Leith closure
+# Forced turbulence scenario without Leith closure
 
 qg:
   grid:
     Nx: 512
     Ny: 512
-  
+    Lx: 12.566370614359172  # 4*pi
+    Ly: 12.566370614359172  # 4*pi
+
   time:
-    dt: 0.0005
+    dt: 0.001 # 0.0005
     T: 100
-    save_rate: 1024
+    save_rate: 200 # 1024
   
   pde:
-    mu: 0.02  # Linear drag
+    mu: 0.02      # Linear drag
     nu: 1.025e-4
-    B: 2.5  # Beta plane
-    closure_function: leith
-    closure: 0.1
+    B:  1.0 # 2.5       # Beta plane
+    # closure_function: leith
+    # closure: 0.1
   
   ic:
-    energy: 0.01
+    energy: 0 # 0.01
     wavenumbers: [3.0, 5.0]
   
   forcing:

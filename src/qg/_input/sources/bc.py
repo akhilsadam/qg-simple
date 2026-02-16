@@ -148,17 +148,17 @@ class Region:
             case 'single':
                 _outlet_ramp = Region.vertical_outlet_single_mask(grid, X,  Y, _min, _max, 1 - width, width)
                 _birect_ramp = Region.horizontal_bidirectional_double_mask(grid, X, Y, _min, _max, 1 - 2 * width, width) # just above lower image boundary
-                return _outlet_ramp + _birect_ramp
+                return (_outlet_ramp + _birect_ramp).clamp(0.0, 1.0)
             
             case 'double': 
                 _outlet_1, _outlet_2, _outlet_ramp = Region.vertical_outlet_double_mask(grid, X,  Y, _min, _max, 1 - 2 * width, width)
                 _bidirect_1, _bidirect_2, _bidirect_ramp = Region.horizontal_bidirectional_triple_mask(grid, X, Y, _min, _max, 1 - 3*width, width) # just above lower image boundary
-                return (_outlet_1 + _bidirect_1, _outlet_2 + _bidirect_2, _outlet_ramp + _bidirect_ramp)
+                return (_outlet_1 + _bidirect_1, _outlet_2 + _bidirect_2, (_outlet_ramp + _bidirect_ramp).clamp(0.0, 1.0))
             
             case 'triple': 
                 _outlet_1, _outlet_2, _outlet_ramp = Region.vertical_bidirectional_triple_mask(grid, X,  Y, _min, _max, 1 - 3 * width, width)
                 _bidirect_1, _bidirect_2, _bidirect_ramp = Region.horizontal_bidirectional_triple_mask(grid, X, Y, _min, _max, 1 - 3*width, width) # just above lower image boundary
-                return (_outlet_1 + _bidirect_1, _outlet_2 + _bidirect_2, _outlet_ramp + _bidirect_ramp)
+                return (_outlet_1 + _bidirect_1, _outlet_2 + _bidirect_2, (_outlet_ramp + _bidirect_ramp).clamp(0.0, 1.0))
 
 ### 
 class BC:
