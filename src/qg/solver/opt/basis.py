@@ -1,6 +1,13 @@
 import torch
 import numpy as np
 
+@staticmethod
+def puv(qh, derivative):
+    ph = derivative.inv_laplacian * qh
+    uh = -1 * derivative.dy * ph
+    vh = derivative.dx * ph
+    return ph, uh, vh
+
 class _state:
     def __init__(self, qh, dt, derivative):
         self.qh = qh
@@ -12,9 +19,7 @@ class _state:
             self.update_uv()
         
     def update_uv(self):
-        self.ph = -1 * self.qh * self.derivative.irsq
-        self.uh = -1 * self.derivative.dy * self.ph
-        self.vh = self.derivative.dx * self.ph
+        self.ph, self.uh, self.vh = puv(self.qh, self.derivative)
         
     # def update_potential_flow(self):    
     #     self.uh = self.uh + self.uh_p + self.x_adv * self.dt
@@ -22,7 +27,7 @@ class _state:
         
     # def update_qp(self):
     #     self.qh = - 1j * self.derivative.kr * self.vh + 1j * self.derivative.ky * self.uh
-    #     self.ph = - self.qh * self.derivative.irsq
+    #     self.ph = self.qh * self.derivative.inv_laplacian
         
     #     uh_w = 1j * self.derivative.ky * self.ph
     #     vh_w = -1j * self.derivative.kr * self.ph
@@ -61,23 +66,3 @@ def to_spectral(physical_field):
     Convert a physical field to spectral space (FFT).
     """
     return torch.fft.rfftn(physical_field,dim=(-2, -1),norm='forward')
-
-
-def dealias(y, derivative, dealias_factor=1/3):
-    """
-    Apply dealiasing to the field based on the ratio (usually 1/3 rule).
-    The field's high-frequency components are truncated.
-    
-    Args:
-    - y: tensor in spectral space to apply dealiasing.
-    - derivative: SpectralOperator instance to access ky, kr, and krsq.
-    - dealias_factor: factor to apply the dealiasing (default is 1/3).
-    
-    Returns:
-    - y: tensor with high frequencies removed.
-    """
-    
-    # Apply dealiasing: set high-frequency components to zero
-    y[derivative.alias_mask.expand_as(y)] = 0
-    
-    return y

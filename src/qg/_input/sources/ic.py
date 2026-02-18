@@ -1,4 +1,5 @@
 import torch
+from qg.solver.opt.basis import puv
 
 # CU compatibility workaround
 def abs(x):
@@ -8,10 +9,9 @@ def abs(x):
         return torch.abs(x)
 
 
-def int_sq(y, grid):
+def int_sq(y):
     Y = torch.sum(abs(y[:, 0])**2) + 2*torch.sum(abs(y[:, 1:])**2)
-    n = grid.Lx * grid.Ly  # Use grid object for Lx and Ly
-    return Y * n
+    return Y
 
 # Generates initial conditions based on specified energy and wavenumber limits
 def _init_randn(grid, derivative,
@@ -24,34 +24,31 @@ def _init_randn(grid, derivative,
     
     torch.manual_seed(seed)
     
-    # Use derivative for kr, ky, and krsq
-    K = torch.sqrt(derivative.krsq).repeat(n_batch, 1, 1)  # Wavenumber of each point in frequency space
-    k = derivative.kx.repeat(n_batch, grid.Ny, 1)                # Ensure proper shape for k
+    # use grid wavenumbers
+    K = torch.sqrt(grid.ksq).repeat(n_batch, 1, 1)  # Wavenumber of each point in frequency space
+    k = grid.kx.repeat(n_batch, grid.Ny, 1)         # Ensure proper shape for k
 
-    # Generate random complex field in spectral space
-    qih = torch.randn(k.size(), dtype=torch.complex128).to(grid.device)
+    # random vorticity in spectral space
+    qh = torch.randn(k.size(), dtype=torch.complex128).to(grid.device)
     
-    # Apply wavenumber filters
-    qih[K < wavenumbers[0]] = 0.0
-    qih[K > wavenumbers[1]] = 0.0
-    qih[k == 0.0] = 0.0  # Handle zero wavenumber 
+    # filter wavenumber range with zero mean
+    qh[K < wavenumbers[0]] = 0.0
+    qh[K > wavenumbers[1]] = 0.0
+    qh[k == 0.0] = 0.0
     
-    # Normalize initial condition energy
-    E0 = energy
-    Ei = 0.5 * (int_sq(derivative.kx * derivative.irsq * qih, grid) +
-                int_sq(derivative.ky * derivative.irsq * qih, grid)) / (grid.Lx * grid.Ly)
+    # normalize to specified energy
+    ph, uh, vh = puv(qh, derivative)
+    E = 0.5 * (int_sq(uh) + int_sq(vh))
+    qh *= torch.sqrt(energy / E)
     
-    # Scale to the desired energy
-    qih *= torch.sqrt(E0 / Ei)
-    
-    # Store the initial condition for persistent use
+    # store the initial condition for persistent use
     if persistent:
-        globals()['ic_'] = qih.detach().clone()
+        globals()['ic_'] = qh.detach().clone()
     
     # print("Initial condition energy:", E0)
-    # print(torch.max((qih).abs()), torch.min((qih).abs()))
+    # print(torch.max((qh).abs()), torch.min((qh).abs()))
     
-    return qih
+    return qh
 
 ####################################################################################################
 

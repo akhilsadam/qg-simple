@@ -30,11 +30,10 @@ generate-forced: install
 # Quick test (small grid, offline)
 test-generate: install
 	python -m qg.train \
-		scenario=decaying_turbulence \
-		grid.Nx=64 \
-		grid.Ny=64 \
-		time.T=10 \
-		ic.n_batch=2 \
+		scenario=forced_turbulence \
+		qg.grid.Nx=128 \
+		qg.grid.Ny=128 \
+		qg.ic.n_batch=1 \
 		wandb.mode=offline
 
 # Clean output

@@ -1,6 +1,6 @@
 [project]
 name = "quasigeostrophic-flow"
-version = "0.2.0"
+version = "0.2.1"
 description = "QG turbulence simulation with Hydra and WandB tracking"
 authors = [
     {name = "Akhil Sadam", email = "sadam.akhil@gmail.com"}

@@ -30,10 +30,10 @@ class Sponge:
         ### velocity / closed bc
         masked_vh_delta = to_spectral(_outlet_v2 * to_physical(state.vh - vh)) 
         masked_uh_delta = to_spectral(_outlet_v2 * to_physical(state.uh - uh))
-        outlet_velocity_sponge = (1j * derivative.kr * masked_vh_delta - 1j * derivative.ky * masked_uh_delta) / _eta
+        outlet_velocity_sponge = (derivative.dx * masked_vh_delta - derivative.dy * masked_uh_delta) / _eta
         
         ### diffusion
-        outlet_diffusion = -0.1 * derivative.krsq * to_spectral(_outlet_v1_ramp * to_physical(state.qh))
+        outlet_diffusion = 0.1 * derivative.laplacian * to_spectral(_outlet_v1_ramp * to_physical(state.qh))
             
         return outlet_diffusion + outlet_velocity_sponge # outlet_vorticity_sponge + 
     

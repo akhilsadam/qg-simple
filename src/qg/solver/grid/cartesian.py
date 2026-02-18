@@ -31,11 +31,30 @@ class CartesianGrid:
         self.x = torch.arange(-self.Lx/2, self.Lx/2, self.dx, device=self.device)
         self.y = torch.arange(-self.Ly/2, self.Ly/2, self.dy, device=self.device)
         
+        # number of wavenumber components (half of real grid in x-direction)
+        self.dk = int(self.Nx / 2 + 1)
+
+        # pure wavenumbers
+        self.ky = torch.reshape((torch.fft.fftfreq(self.Ny, self.Ly / (self.Ny * 2 * torch.pi))), 
+            (self.Ny, 1)
+        )[None,:,:] 
+        
+        self.kx = torch.reshape((torch.fft.rfftfreq(self.Nx, self.Lx / (self.Nx * 2 * torch.pi))), 
+            (1, self.dk)
+        )[None,:,:]
+        
+        self.ksq = self.kx**2 + self.ky**2
+        
     def to(self, device):
         """ Move grid tensors to another device. """
         self.device = device
         self.x = self.x.to(device)
         self.y = self.y.to(device)
+        
+        # wavenumbers
+        self.kx = self.kx.to(device)
+        self.ky = self.ky.to(device)
+        self.ksq = self.ksq.to(device)
 
     def __repr__(self):
         # print(grid)
