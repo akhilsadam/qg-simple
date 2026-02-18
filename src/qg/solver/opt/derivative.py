@@ -11,6 +11,12 @@ class Derivative:
         self.mkx = grid.kx
         self.mky = grid.ky
         
+        # Zeitlin sine?
+        # _dx = torch.pi / grid.Nx
+        # _dy = torch.pi / grid.Ny
+        # self.mkx = torch.sin(grid.kx * _dx) / _dx
+        # self.mky = torch.sin(grid.ky * _dy) / _dy
+        
         self.dx = 1j * self.mkx
         self.dy = 1j * self.mky
 
@@ -47,12 +53,7 @@ class Derivative:
                 f"Lx={self.grid.Lx:.4f}, Ly={self.grid.Ly:.4f}, device={self.device}")
 
 if __name__ == "__main__":
-    class grid:
-        Nx = 64
-        Ny = 64
-        Lx = 1.0
-        Ly = 1.0
-        device = 'cpu'
-    
+    from qg.solver.grid.cartesian import CartesianGrid
+    grid = CartesianGrid(Nx=64, Ny=64)
     derivative = Derivative(grid)
-    print(derivative.kx)
+    print(derivative.mkx)
