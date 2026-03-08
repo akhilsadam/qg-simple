@@ -141,7 +141,7 @@ class QG():
         return solution_torch
 
     def nn_step(self, u):
-        qh = to_spectral(u[:,-1,0,...]) # B T C H W -> B H W
+        qh = to_spectral(u) # assumes B H W, vorticity only
         state = _state(qh, self.dt, self.derivative) # In spectral space
         self.step(state)
-        return state._out()[:,None,None,...]  # B H W -> B T C H W
+        return state._out()[:,None,None,...]  # B H W
