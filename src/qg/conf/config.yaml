@@ -24,7 +24,7 @@ qg:
     nv: 1.0
     penalty: 0.0
     closure_function: null
-    closure: 0.1
+    closure: 0.0
     friction: null
     rossby_radius: null
   
@@ -45,12 +45,7 @@ qg:
   
   forcing: null
   
-  mask:
-    function: circular
-    r: 0.628318530718  # pi/5
-    x_center: 0.5
-    y_center: 0.5
-    tol: 0.001
+  mask: null
   
   fps: 20
   profile: false
