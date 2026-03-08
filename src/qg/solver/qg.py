@@ -48,7 +48,7 @@ class QG():
         self.logger.info(f"Initialized QG model with {self.grid.Nx}x{self.grid.Ny} grid on {self.grid.device}")
 
     def step(self, state):
-        state.dt = self.dt # Not sure if this is necessary, need to think about adaptive time stepping TODO
+        # state.dt = self.dt # Not sure if this is necessary, need to think about adaptive time stepping TODO
 
         # vorticity step
         explicit_source = AB2(self.operator.source(state)) # source term
