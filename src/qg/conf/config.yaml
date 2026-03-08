@@ -11,6 +11,7 @@ qg:
     Lx: 6.283185307179586  # 2*pi
     Ly: 6.283185307179586
     precision: float32
+    device: 'cuda'
   
   time:
     dt: 0.001
