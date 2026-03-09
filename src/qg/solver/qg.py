@@ -38,7 +38,7 @@ class QG():
         self.logger.addHandler(logging.StreamHandler())
         
         self.grid = grid(**param.grid)
-        self.derivative = derivative(self.grid)
+        self.derivative = derivative(self.grid).to(self.grid.device)
         self.implicit_linear_operator = implicit_linear_operator(self.grid, self.derivative, param.pde)
         self.operator = define_explicit_operator(param, self.grid, self.derivative, self.logger,
                                         args=(param.time.dt, self.grid, self.derivative, param.pde),
