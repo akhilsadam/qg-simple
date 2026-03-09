@@ -23,18 +23,26 @@ def direct_solver(config_overrides: dict = None) -> QG:
         QG solver instance ready to run.
     
     Example:
-        >>> qg = init_qg({'qg.grid.Nx': 256, 'qg.grid.Ny': 256})
+        >>> qg = direct_solver({'qg.grid.Nx': 256, 'qg.grid.Ny': 256})
         >>> data = qg.solve(save_path='./output')
     """
-    from hydra import initialize, compose
+    from hydra import initialize, compose, GlobalHydra
     from omegaconf import OmegaConf
     from qg.config import register_configs
+    import os
+    from pathlib import Path
+    
+    # Clear any existing Hydra instance
+    GlobalHydra.instance().clear()
     
     # Register configs
     register_configs()
     
+    # Get absolute path to config directory
+    config_dir = Path(__file__).parent / "conf"
+    
     # Initialize Hydra with config path
-    with initialize(version_base="1.3", config_path="conf"):
+    with initialize(version_base="1.3", config_path=str(config_dir)):
         # Compose config with optional overrides
         overrides = []
         if config_overrides:
@@ -42,6 +50,9 @@ def direct_solver(config_overrides: dict = None) -> QG:
                 overrides.append(f"{key}={value}")
         
         cfg = compose(config_name="config", overrides=overrides)
+        
+        # Debug: print resolved config
+        print(f"Grid config: Nx={cfg.qg.grid.Nx}, Ny={cfg.qg.grid.Ny}, device={cfg.qg.grid.device}")
         
         # Initialize and return QG solver
         return QG(cfg.qg)
