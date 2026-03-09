@@ -47,6 +47,8 @@ class Derivative:
         self.dy = self.dy.to(device)
         self.laplacian = self.laplacian.to(device)
         self.inv_laplacian = self.inv_laplacian.to(device)
+        self.alias_mask = self.alias_mask.to(device)
+        return self
 
     def __repr__(self):
         return (f"Derivative: Nx={self.grid.Nx}, Ny={self.grid.Ny}, dk={self.dk}, "
