@@ -52,7 +52,7 @@ class QG():
 
         # vorticity step
         explicit_source = AB2(self.operator.source(state)) # source term
-        state.qh = CN2(state.qh, explicit_source, self.dt, self.implicit_linear_operator) # Crank-Nicolson        
+        state.qh = CN2(state.qh, explicit_source, state.dt, self.implicit_linear_operator) # Crank-Nicolson        
         
         # potential flow velocity step
         # state.x_adv, state.y_adv = advection_uv(self.operator, state)
@@ -140,8 +140,10 @@ class QG():
         
         return solution_torch
 
-    def nn_step(self, u):
+    def nn_step(self, u, dt=None):
+        if dt is None:
+            dt = self.dt
         qh = to_spectral(u) # assumes B H W, vorticity only
-        state = _state(qh, self.dt, self.derivative) # In spectral space
+        state = _state(qh, dt, self.derivative) # In spectral space
         self.step(state)
         return state._out()[:,None,None,...]  # B H W
