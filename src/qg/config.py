@@ -14,6 +14,7 @@ class GridConfig:
     Lx: float
     Ly: float
     precision: str
+    device: str
 
 
 @dataclass
