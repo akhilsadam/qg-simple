@@ -11,7 +11,7 @@ qg:
     Lx: 6.283185307179586  # 2*pi
     Ly: 6.283185307179586
     precision: float32
-    device: cuda
+    # device: cuda
   
   time:
     dt: 0.001
@@ -28,6 +28,7 @@ qg:
     closure: 0.0
     friction: null
     rossby_radius: null
+    rpn: null  # e.g. "q lap nu * q mu * - q invlap dx B * - psi q jacobian -"
   
   ic:
     function: randn
