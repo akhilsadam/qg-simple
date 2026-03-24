@@ -1,4 +1,12 @@
-## Changelog:
+## Quickstart
+- First, clone or fork the `package-stable` branch.
+- Create an environment (with `uv` from `pip install uv`).
+- Then install with `make install`
+- Run an example with `make test-generate`
+
+You may need an appropriate version of FFMPEG, and sufficiently up-to-date Linux.
+
+## Changelog [`package-variant`]:
 
 ### 0.2.1 (2026-02-18)
 - Refactored derivative, grid, and input code
