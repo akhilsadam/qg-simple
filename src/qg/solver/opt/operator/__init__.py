@@ -3,9 +3,21 @@ from qg.solver.util import _Math
 from qg.solver.opt.operator.jacobian import jacobian_pq
 from qg.solver.opt.operator.obstacle import solve_mask, brinkman_no_slip_penalty, brinkman_friction_slip_penalty
 from qg.solver.opt.operator.vortex import vortex_stretching
+from qg.solver.opt.operator.pde_rpn import compile_pde_rpn
+
+
+def _compile_custom_pde_if_present(params, derivative):
+    pde_rpn = getattr(params, "rpn", None)
+    if not pde_rpn:
+        return None
+    return compile_pde_rpn(pde_rpn, derivative, params)
 
 def define_explicit_operator(param, grid, derivative, logger, args, sources, **kwargs):
     patches = []
+    compiled_pde = _compile_custom_pde_if_present(param.pde, derivative)
+
+    if compiled_pde is not None:
+        logger.info(f"Using custom PDE RPN: {' '.join(compiled_pde.tokens)}")
     
     if param.bc is not None:
         patches.append(lambda op, state: param.bc(state, grid, derivative))
@@ -31,6 +43,12 @@ def define_explicit_operator(param, grid, derivative, logger, args, sources, **k
     #     patches.append(vortex_stretching)
 
     patches.extend(sources)
+
+    if compiled_pde is not None:
+        if compiled_pde.nonlinear_source is not None:
+            patches.append(lambda op, state: compiled_pde.nonlinear_source(state))
+    else:
+        patches.append(jacobian_pq)
             
     return Operator(*args, patch_list=patches)
         
@@ -42,7 +60,7 @@ class Operator:
         self.params = params
         self.device = grid.device
 
-        self.patch_list = [*patch_list,jacobian_pq]
+        self.patch_list = [*patch_list]
         
     def source(self, state):
         return self.derivative.dealias(sum([f(self, state) for f in self.patch_list]))
@@ -57,7 +75,14 @@ class ImplicitLinearOperator(_Math):
         self.derivative = derivative
         self.params = params
         self.device = grid.device
-        super().__init__(value = self._linear_term()) # precompute
+        compiled_pde = _compile_custom_pde_if_present(self.params, derivative)
+
+        if compiled_pde is not None and compiled_pde.linear_operator is not None:
+            value = compiled_pde.linear_operator
+        else:
+            value = self._linear_term()
+
+        super().__init__(value=value) # precompute
 
     def _linear_term(self):
         nu = self.params.nu
