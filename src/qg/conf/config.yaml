@@ -27,8 +27,6 @@ qg:
     closure_function: null
     closure: 0.0
     friction: null
-    rossby_radius: null
-    rpn: null  # e.g. "q lap nu * q mu * - q invlap dx B * - psi q jacobian -"
   
   ic:
     function: randn

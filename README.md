@@ -1,8 +1,3 @@
-# Autodifferentiable QG code
-- an evolving version of the solver code for our [IEEE Oceans](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=11245082) & [JAMES](https://doi.org/10.1029/2025MS005324) papers
-- see a [simple, quickstart version instead](https://github.com/akhilsadam/qg-simple)
-- see the (limited) [official archival version](https://zenodo.org/records/17282193) or a [GitHub mirror instead](https://github.com/ananthu545/qg-2d)
-
 ## Quickstart
 - First, clone or fork the `package-stable` branch.
 - Create an environment (with `uv` from `pip install uv`).
@@ -10,6 +5,14 @@
 - Run an example with `make test-generate`
 
 You may need an appropriate version of FFMPEG, and sufficiently up-to-date Linux.
+Note example config files are in `conf/` and can be edited as presets.
+
+If `CUDA` is not automatically detected, you may need to set a preset variable in `conf/config.yaml`
+
+## Usage
+This code is provided as a library-style package, so you should import the `qg` package after the quickstart to use it in non-preset ways.
+See `__init__.py` for a simple example with `direct_solver`, that exposes the `QG` instance with functions in `qg`.
+
 
 ## Changelog [`package-variant`]:
 

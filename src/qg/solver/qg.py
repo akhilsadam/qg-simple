@@ -68,7 +68,7 @@ class QG():
     def init(self):  
         return _state(self.param.ic(self.grid, self.derivative), self.dt, self.derivative) # In spectral space
           
-    def _run(self, prof=None, nan_check=False, lim_check=-1):
+    def _run(self, prof=None):
         save_rate = self.param.time.save_rate
         steps = int(self.param.time.T / self.dt)  # Number of time steps
         
@@ -79,7 +79,7 @@ class QG():
         B = state.qh.shape[0]  # Number of batches
         solution = torch.zeros([B, int(steps/save_rate)+1, 4, self.grid.Ny, self.grid.Nx])
         
-        for it in tqdm(range(steps)):
+        for it in tqdm(range(steps - 1)):
             self.step(state)            
             
             if (it+1) % save_rate == 0:
@@ -88,33 +88,22 @@ class QG():
             
             if prof is not None:
                 prof.step()  # Step the profiler
-                
-            if nan_check and torch.isnan(state.qh).any():
-                self.logger.warning(f"NaN detected at iteration {it}")
-                return solution[:,:save_index,...]  # Return what we have so far
-                break
             
-            if lim_check > 0 and torch.abs(state.qh.real).mean() > lim_check:  # Arbitrary large value
-                self.logger.warning(f"Value overflow detected at iteration {it}")
-                return solution[:,:save_index,...]  # Return what we have so far
-                break
-            
-        solution[:, -1, ...] = state.out() # B T C H W
                 
         return solution
     
-    def solve(self, save_path, name='DNS', clamp=0.3, nan_check=False, lim_check=-1): # for direct user call
+    def solve(self, save_path, name='DNS', clamp=0.3): # for direct user call
         if hasattr(self.param, 'profile') and self.param.profile:
             self.logger.info(f"Profiling enabled.")
             from torch.profiler import profile, ProfilerActivity, record_function
             with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],record_shapes=True, with_stack=True) as prof:
                 with record_function("_run"):
-                    solution_torch = self._run(prof, nan_check=nan_check, lim_check=lim_check)            
+                    solution_torch = self._run(prof)            
             print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=-1))
             prof.export_chrome_trace(os.path.join(save_path, f'{name}_trace.json'))
             self.logger.info(f"Profile trace saved at {os.path.join(save_path, f'{name}_trace.json')}")
         else:
-            solution_torch = self._run(nan_check=nan_check, lim_check=lim_check)
+            solution_torch = self._run()
         solution = solution_torch.cpu().numpy()
         self.logger.info(f"Simulation complete.")
             

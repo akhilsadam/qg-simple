@@ -83,11 +83,9 @@ def brinkman_friction_slip_penalty(op, state, chi, chi_velocity):
     dv = (v - chi_velocity[1])
     
     normal_x, normal_y = compute_normal_vectors(chi)
-
     ndot = du * normal_x + dv * normal_y
     dun = ndot * normal_x
     dvn = ndot * normal_y
-
     dut = (du - dun)
     dvt = (dv - dvn)
     dutr = dut * (1 - friction)
@@ -104,20 +102,18 @@ def brinkman_friction_slip_penalty(op, state, chi, chi_velocity):
     
     # modify flow field inside obstacle
     
-    # # get closest point along normal
-    # x = torch.arange(0, chi.shape[-1], device=chi.device)
-    # y = torch.arange(0, chi.shape[-2], device=chi.device)
-    # xc = (torch.round(normal_x) + x).to(torch.int32)
-    # yc = (torch.round(normal_y) + y).to(torch.int32)
-    # # print(xc.shape)
-    # uc = dutr[...,yc,xc]
-    # vc = dvtr[...,yc,xc]
-    # print(yc.shape)
-    # print(dvtr.shape, vc.shape, chi.shape)
- 
+    # get closest point along normal
+    x = torch.arange(0, chi.shape[-1], device=chi.device)
+    y = torch.arange(0, chi.shape[-2], device=chi.device)
+    xc = (torch.round(normal_x) + x).to(torch.int32)
+    yc = (torch.round(normal_y) + y).to(torch.int32)
+    print(xc.shape)
+    uc = dutr[...,yc,xc]
+    vc = dvtr[...,yc,xc]
+    print(yc.shape)
     
-    u_corr = u * (1 - chi) + u_chi
-    v_corr = v * (1 - chi) + v_chi
+    u_corr = u * (1 - chi) + chi * uc
+    v_corr = v * (1 - chi) + chi * vc
     
     state.uh = to_spectral(u_corr)
     state.vh = to_spectral(v_corr)
