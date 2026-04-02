@@ -27,6 +27,7 @@ class _Expr:
     const_value: Optional[Union[float, torch.Tensor]]
     linear_multiplier: Optional[torch.Tensor]
     terms: Sequence[_TermMeta]
+    in_physical_domain: bool = False  # True if this expression must be evaluated in physical space
 
 
 @dataclass
@@ -44,11 +45,12 @@ def _parse_tokens(rpn: Union[str, Sequence[str]]) -> Sequence[str]:
 def _make_const_expr(value):
     scalar_value = float(value) if isinstance(value, (int, float)) else None
     return _Expr(
-        eval_fn=lambda state, _value=value: _value,
+        eval_fn=lambda state, _value=value: float(_value) if isinstance(_value, (int, float)) else _value,
         depends_on_state=False,
-        const_value=value,
+        const_value=float(value) if isinstance(value, (int, float)) else value,
         linear_multiplier=None,
         terms=[_TermMeta(state_factor_count=0, linear_multiplier=None, scalar_value=scalar_value)],
+        in_physical_domain=False,
     )
 
 
@@ -93,123 +95,70 @@ def _is_vec(expr):
     return isinstance(expr, _VecExpr)
 
 
-def _binary_add_scalar(a: _Expr, b: _Expr):
-    const_value = None
-    if not a.depends_on_state and not b.depends_on_state:
-        const_value = a.const_value + b.const_value
-
-    linear_multiplier = None
-    if a.linear_multiplier is not None and b.linear_multiplier is not None:
-        linear_multiplier = a.linear_multiplier + b.linear_multiplier
-    elif a.linear_multiplier is not None:
-        linear_multiplier = a.linear_multiplier
-    elif b.linear_multiplier is not None:
-        linear_multiplier = b.linear_multiplier
-
-    return _Expr(
-        eval_fn=lambda state: a.eval_fn(state) + b.eval_fn(state),
-        depends_on_state=a.depends_on_state or b.depends_on_state,
-        const_value=const_value,
-        linear_multiplier=linear_multiplier,
-        terms=[*a.terms, *b.terms],
-    )
+def _to_physical_safe(value, in_physical):
+    if isinstance(value, torch.Tensor):
+        return value if in_physical else to_physical(value)
+    return value
 
 
-def _binary_sub_scalar(a: _Expr, b: _Expr):
-    const_value = None
-    if not a.depends_on_state and not b.depends_on_state:
-        const_value = a.const_value - b.const_value
+# Operator registry tables, centralized for easy modularization and random PDE graph generation.
+unary_linear_ops = {
+    "dx": None,  # filled in compile_pde_rpn from derivative context
+    "dy": None,
+    "lap": None,
+    "invlap": None,
+    "hodge": None,
+    "star": None,
+}
 
-    linear_multiplier = None
-    if a.linear_multiplier is not None and b.linear_multiplier is not None:
-        linear_multiplier = a.linear_multiplier - b.linear_multiplier
-    elif a.linear_multiplier is not None:
-        linear_multiplier = a.linear_multiplier
-    elif b.linear_multiplier is not None:
-        linear_multiplier = -b.linear_multiplier
+nonlinear_unary_ops = {
+    "sqrt": torch.sqrt,
+    "cos": torch.cos,
+    "sin": torch.sin,
+    "tan": torch.tan,
+    "acos": torch.acos,
+    "asin": torch.asin,
+    "atan": torch.atan,
+    "cosh": torch.cosh,
+    "sinh": torch.sinh,
+    "tanh": torch.tanh,
+    "exp": torch.exp,
+    "log": torch.log,
+    "log10": lambda x: torch.log10(x),
+    "square": lambda x: x**2,
+    "cube": lambda x: x**3,
+    "abs": torch.abs,
+    "sign": torch.sign,
+    "ceil": torch.ceil,
+    "floor": torch.floor,
+    "round": torch.round,
+}
 
-    return _Expr(
-        eval_fn=lambda state: a.eval_fn(state) - b.eval_fn(state),
-        depends_on_state=a.depends_on_state or b.depends_on_state,
-        const_value=const_value,
-        linear_multiplier=linear_multiplier,
-        terms=[*a.terms, *_negate_terms(b.terms)],
-    )
 
 
-def _binary_mul_scalar(a: _Expr, b: _Expr):
-    const_value = None
-    if not a.depends_on_state and not b.depends_on_state:
-        const_value = a.const_value * b.const_value
 
-    linear_multiplier = None
-    if (not a.depends_on_state) and (b.linear_multiplier is not None):
-        linear_multiplier = a.const_value * b.linear_multiplier
-    elif (not b.depends_on_state) and (a.linear_multiplier is not None):
-        linear_multiplier = b.const_value * a.linear_multiplier
 
-    if (not a.depends_on_state) and (not b.depends_on_state):
-        eval_fn = lambda state: a.eval_fn(state) * b.eval_fn(state)
-        terms = [_TermMeta(
-            state_factor_count=0,
-            linear_multiplier=None,
-            scalar_value=(float(a.const_value) * float(b.const_value)) if isinstance(a.const_value, (int, float)) and isinstance(b.const_value, (int, float)) else None,
-        )]
-    elif (not a.depends_on_state):
-        eval_fn = lambda state: a.eval_fn(state) * b.eval_fn(state)
-        terms = _scale_terms(b.terms, a.const_value)
-    elif (not b.depends_on_state):
-        eval_fn = lambda state: a.eval_fn(state) * b.eval_fn(state)
-        terms = _scale_terms(a.terms, b.const_value)
-    else:
-        eval_fn = lambda state: to_spectral(to_physical(a.eval_fn(state)) * to_physical(b.eval_fn(state)))
-        terms = []
-        for ta in a.terms:
-            for tb in b.terms:
-                term_linear_multiplier = None
-                if ta.scalar_value is not None and tb.linear_multiplier is not None and tb.state_factor_count <= 1:
-                    term_linear_multiplier = ta.scalar_value * tb.linear_multiplier
-                elif tb.scalar_value is not None and ta.linear_multiplier is not None and ta.state_factor_count <= 1:
-                    term_linear_multiplier = tb.scalar_value * ta.linear_multiplier
-
-                term_scalar = None
-                if ta.scalar_value is not None and tb.scalar_value is not None:
-                    term_scalar = ta.scalar_value * tb.scalar_value
-
-                terms.append(_TermMeta(
-                    state_factor_count=ta.state_factor_count + tb.state_factor_count,
-                    linear_multiplier=term_linear_multiplier,
-                    scalar_value=term_scalar,
-                ))
-
-    return _Expr(
-        eval_fn=eval_fn,
-        depends_on_state=a.depends_on_state or b.depends_on_state,
-        const_value=const_value,
-        linear_multiplier=linear_multiplier,
-        terms=terms,
-    )
 
 
 def _binary_add(a, b):
     if _is_vec(a) and _is_vec(b):
         return _VecExpr(
-            x=_binary_add_scalar(a.x, b.x),
-            y=_binary_add_scalar(a.y, b.y),
+            x=_binary_add_scalar(a.x, b.x, "+"),
+            y=_binary_add_scalar(a.y, b.y, "+"),
         )
     if (not _is_vec(a)) and (not _is_vec(b)):
-        return _binary_add_scalar(a, b)
+        return _binary_add_scalar(a, b, "+")
     raise ValueError("RPN type error: '+' requires scalar+scalar or vector+vector")
 
 
 def _binary_sub(a, b):
     if _is_vec(a) and _is_vec(b):
         return _VecExpr(
-            x=_binary_sub_scalar(a.x, b.x),
-            y=_binary_sub_scalar(a.y, b.y),
+            x=_binary_sub_scalar(a.x, b.x, "-"),
+            y=_binary_sub_scalar(a.y, b.y, "-"),
         )
     if (not _is_vec(a)) and (not _is_vec(b)):
-        return _binary_sub_scalar(a, b)
+        return _binary_sub_scalar(a, b, "-")
     raise ValueError("RPN type error: '-' requires scalar-scalar or vector-vector")
 
 
@@ -218,15 +167,185 @@ def _binary_mul(a, b):
         raise ValueError("RPN type error: vector*vector is undefined; use 'dot' or 'inner'")
     if _is_vec(a):
         return _VecExpr(
-            x=_binary_mul_scalar(a.x, b),
-            y=_binary_mul_scalar(a.y, b),
+            x=_binary_mul_scalar(a.x, b, "*"),
+            y=_binary_mul_scalar(a.y, b, "*"),
         )
     if _is_vec(b):
         return _VecExpr(
-            x=_binary_mul_scalar(a, b.x),
-            y=_binary_mul_scalar(a, b.y),
+            x=_binary_mul_scalar(a, b.x, "*"),
+            y=_binary_mul_scalar(a, b.y, "*"),
         )
-    return _binary_mul_scalar(a, b)
+    return _binary_mul_scalar(a, b, "*")
+
+
+def _binary_add_scalar(a: _Expr, b: _Expr, op: str) -> _Expr:
+    in_physical_domain = a.in_physical_domain or b.in_physical_domain
+    if in_physical_domain:
+        def eval_fn(state):
+            a_val = _to_physical_safe(a.eval_fn(state), a.in_physical_domain)
+            b_val = _to_physical_safe(b.eval_fn(state), b.in_physical_domain)
+            if isinstance(a_val, torch.Tensor) and a_val.dim() == 2:
+                a_val = a_val.unsqueeze(0)
+            if isinstance(b_val, torch.Tensor) and b_val.dim() == 2:
+                b_val = b_val.unsqueeze(0)
+            return a_val + b_val
+    else:
+        eval_fn = lambda state: a.eval_fn(state) + b.eval_fn(state)
+    
+    depends_on_state = a.depends_on_state or b.depends_on_state
+    const_value = None
+    if (not depends_on_state) and (a.const_value is not None) and (b.const_value is not None):
+        const_value = a.const_value + b.const_value
+    
+    linear_multiplier = None
+    if a.linear_multiplier is not None and b.linear_multiplier is not None:
+        linear_multiplier = a.linear_multiplier + b.linear_multiplier
+    elif a.linear_multiplier is not None and (not b.depends_on_state):
+        linear_multiplier = a.linear_multiplier
+    elif b.linear_multiplier is not None and (not a.depends_on_state):
+        linear_multiplier = b.linear_multiplier
+    
+    terms = []
+    for ta in a.terms:
+        for tb in b.terms:
+            term_linear_multiplier = None
+            if ta.linear_multiplier is not None and tb.linear_multiplier is not None:
+                term_linear_multiplier = ta.linear_multiplier * tb.linear_multiplier
+            elif ta.linear_multiplier is not None and tb.scalar_value is not None:
+                term_linear_multiplier = ta.linear_multiplier * tb.scalar_value
+            elif tb.linear_multiplier is not None and ta.scalar_value is not None:
+                term_linear_multiplier = tb.linear_multiplier * ta.scalar_value
+            terms.append(_TermMeta(
+                state_factor_count=ta.state_factor_count + tb.state_factor_count,
+                linear_multiplier=term_linear_multiplier,
+                scalar_value=None,
+            ))
+    
+    return _Expr(
+        eval_fn=eval_fn,
+        depends_on_state=depends_on_state,
+        const_value=const_value,
+        linear_multiplier=linear_multiplier,
+        terms=terms,
+        in_physical_domain=in_physical_domain,
+    )
+
+
+def _binary_sub_scalar(a: _Expr, b: _Expr, op: str) -> _Expr:
+    in_physical_domain = a.in_physical_domain or b.in_physical_domain
+    if in_physical_domain:
+        def eval_fn(state):
+            a_val = _to_physical_safe(a.eval_fn(state), a.in_physical_domain)
+            b_val = _to_physical_safe(b.eval_fn(state), b.in_physical_domain)
+            if isinstance(a_val, torch.Tensor) and a_val.dim() == 2:
+                a_val = a_val.unsqueeze(0)
+            if isinstance(b_val, torch.Tensor) and b_val.dim() == 2:
+                b_val = b_val.unsqueeze(0)
+            if op == "-":
+                return a_val - b_val
+            elif op == "+":
+                return a_val + b_val
+            elif op == "*":
+                return a_val * b_val
+            elif op == "jacobian":
+                return _jacobian(a_val, b_val, derivative)
+            else:
+                raise ValueError(f"Unsupported op in physical domain: {op}")
+    else:
+        eval_fn = lambda state: _binary_op_funcs[op](a.eval_fn(state), b.eval_fn(state))
+    
+    depends_on_state = a.depends_on_state or b.depends_on_state
+    const_value = None
+    if (not depends_on_state) and (a.const_value is not None) and (b.const_value is not None):
+        const_value = a.const_value - b.const_value
+    
+    linear_multiplier = None
+    if a.linear_multiplier is not None and b.linear_multiplier is not None:
+        linear_multiplier = a.linear_multiplier - b.linear_multiplier
+    elif a.linear_multiplier is not None and (not b.depends_on_state):
+        linear_multiplier = a.linear_multiplier
+    elif b.linear_multiplier is not None and (not a.depends_on_state):
+        linear_multiplier = -b.linear_multiplier
+    
+    terms = []
+    for ta in a.terms:
+        for tb in b.terms:
+            term_linear_multiplier = None
+            if ta.linear_multiplier is not None and tb.linear_multiplier is not None:
+                term_linear_multiplier = ta.linear_multiplier * tb.linear_multiplier
+            elif ta.linear_multiplier is not None and tb.scalar_value is not None:
+                term_linear_multiplier = ta.linear_multiplier * tb.scalar_value
+            elif tb.linear_multiplier is not None and ta.scalar_value is not None:
+                term_linear_multiplier = -tb.linear_multiplier * ta.scalar_value
+            terms.append(_TermMeta(
+                state_factor_count=ta.state_factor_count + tb.state_factor_count,
+                linear_multiplier=term_linear_multiplier,
+                scalar_value=None,
+            ))
+    
+    return _Expr(
+        eval_fn=eval_fn,
+        depends_on_state=depends_on_state,
+        const_value=const_value,
+        linear_multiplier=linear_multiplier,
+        terms=terms,
+        in_physical_domain=in_physical_domain,
+    )
+
+
+def _binary_mul_scalar(a: _Expr, b: _Expr, op: str) -> _Expr:
+    in_physical_domain = a.in_physical_domain or b.in_physical_domain
+    if in_physical_domain:
+        def eval_fn(state):
+            a_val = _to_physical_safe(a.eval_fn(state), a.in_physical_domain)
+            b_val = _to_physical_safe(b.eval_fn(state), b.in_physical_domain)
+            return a_val * b_val
+    else:
+        eval_fn = lambda state: a.eval_fn(state) * b.eval_fn(state)
+    
+    depends_on_state = a.depends_on_state or b.depends_on_state
+    const_value = None
+    if (not depends_on_state) and (a.const_value is not None) and (b.const_value is not None):
+        const_value = a.const_value * b.const_value
+    
+    linear_multiplier = None
+    if a.linear_multiplier is not None and (not b.depends_on_state) and (b.const_value is not None):
+        linear_multiplier = a.linear_multiplier * b.const_value
+    elif b.linear_multiplier is not None and (not a.depends_on_state) and (a.const_value is not None):
+        linear_multiplier = b.linear_multiplier * a.const_value
+    
+    terms = []
+    for ta in a.terms:
+        for tb in b.terms:
+            term_linear_multiplier = None
+            if ta.linear_multiplier is not None and tb.scalar_value is not None:
+                term_linear_multiplier = ta.linear_multiplier * tb.scalar_value
+            elif tb.linear_multiplier is not None and ta.scalar_value is not None:
+                term_linear_multiplier = tb.linear_multiplier * ta.scalar_value
+            terms.append(_TermMeta(
+                state_factor_count=ta.state_factor_count + tb.state_factor_count,
+                linear_multiplier=term_linear_multiplier,
+                scalar_value=None,
+            ))
+    
+    return _Expr(
+        eval_fn=eval_fn,
+        depends_on_state=depends_on_state,
+        const_value=const_value,
+        linear_multiplier=linear_multiplier,
+        terms=terms,
+        in_physical_domain=in_physical_domain,
+    )
+
+binary_ops = {
+    "+": _binary_add,
+    "-": _binary_sub,
+    "*": _binary_mul,
+    "mul": _binary_mul,
+    "dot": None,  # handled explicitly in compile_pde_rpn
+    "inner": None,
+    "jacobian": None,
+}
 
 
 def _apply_linear_unary_scalar(expr: _Expr, op_multiplier, op_name: str):
@@ -249,15 +368,16 @@ def _apply_linear_unary_scalar(expr: _Expr, op_multiplier, op_name: str):
         ))
 
     return _Expr(
-        eval_fn=lambda state: op_multiplier * expr.eval_fn(state),
+        eval_fn=lambda state: op_multiplier * (to_spectral(expr.eval_fn(state)) if expr.in_physical_domain else expr.eval_fn(state)),
         depends_on_state=expr.depends_on_state,
         const_value=None,
         linear_multiplier=expr_linear_multiplier,
         terms=terms,
+        in_physical_domain=False,  # Linear ops result in spectral
     )
 
 
-def _apply_linear_unary(expr, op_multiplier, op_name: str):
+def _apply_linear_unary(expr, op_multiplier, op_name):
     if _is_vec(expr):
         return _VecExpr(
             x=_apply_linear_unary_scalar(expr.x, op_multiplier, op_name),
@@ -266,12 +386,51 @@ def _apply_linear_unary(expr, op_multiplier, op_name: str):
     return _apply_linear_unary_scalar(expr, op_multiplier, op_name)
 
 
+def _apply_nonlinear_unary(expr, func, func_name):
+    if _is_vec(expr):
+        return _VecExpr(
+            x=_apply_nonlinear_unary_scalar(expr.x, func, func_name),
+            y=_apply_nonlinear_unary_scalar(expr.y, func, func_name),
+        )
+    return _apply_nonlinear_unary_scalar(expr, func, func_name)
+
+
+def _apply_nonlinear_unary_scalar(expr: _Expr, func, func_name):
+    if not expr.depends_on_state:
+        # For constant expressions, compute once in physical space
+        raw_value = expr.eval_fn(None)
+        physical_value = raw_value if expr.in_physical_domain else (to_physical(raw_value) if isinstance(raw_value, torch.Tensor) else raw_value)
+        result = func(physical_value)
+        return _Expr(
+            eval_fn=lambda state: result,
+            depends_on_state=False,
+            const_value=None,
+            linear_multiplier=None,
+            terms=[_TermMeta(state_factor_count=0, linear_multiplier=None, scalar_value=None)],
+            in_physical_domain=True,  # Nonlinear, physical
+        )
+    else:
+        # For state-dependent, apply in physical space per evaluation
+        return _Expr(
+            eval_fn=lambda state: func(
+                expr.eval_fn(state) if expr.in_physical_domain else (
+                    to_physical(expr.eval_fn(state)) if isinstance(expr.eval_fn(state), torch.Tensor) else expr.eval_fn(state)
+                )
+            ),
+            depends_on_state=True,
+            const_value=None,
+            linear_multiplier=None,
+            terms=[_TermMeta(state_factor_count=t.state_factor_count, linear_multiplier=None, scalar_value=None) for t in expr.terms],
+            in_physical_domain=True,  # Nonlinear, physical
+        )
+
+
 def _jacobian(a_h, b_h, derivative):
     a_x = to_physical(derivative.dx * a_h)
     a_y = to_physical(derivative.dy * a_h)
     b_x = to_physical(derivative.dx * b_h)
     b_y = to_physical(derivative.dy * b_h)
-    return to_spectral(a_x * b_y - a_y * b_x)
+    return a_x * b_y - a_y * b_x
 
 
 def _normalize_token(token: str) -> str:
@@ -309,6 +468,7 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
             const_value=None,
             linear_multiplier=one,
             terms=[_TermMeta(state_factor_count=1, linear_multiplier=one, scalar_value=None)],
+            in_physical_domain=False,
         ),
         "omega": _Expr(
             eval_fn=lambda state: state.qh,
@@ -316,6 +476,7 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
             const_value=None,
             linear_multiplier=one,
             terms=[_TermMeta(state_factor_count=1, linear_multiplier=one, scalar_value=None)],
+            in_physical_domain=False,
         ),
         "psi": _Expr(
             eval_fn=lambda state: state.ph,
@@ -323,6 +484,7 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
             const_value=None,
             linear_multiplier=derivative.inv_laplacian,
             terms=[_TermMeta(state_factor_count=1, linear_multiplier=derivative.inv_laplacian, scalar_value=None)],
+            in_physical_domain=False,
         ),
         "ph": _Expr(
             eval_fn=lambda state: state.ph,
@@ -330,6 +492,7 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
             const_value=None,
             linear_multiplier=derivative.inv_laplacian,
             terms=[_TermMeta(state_factor_count=1, linear_multiplier=derivative.inv_laplacian, scalar_value=None)],
+            in_physical_domain=False,
         ),
         "u": _Expr(
             eval_fn=lambda state: state.uh,
@@ -337,6 +500,7 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
             const_value=None,
             linear_multiplier=-derivative.dy * derivative.inv_laplacian,
             terms=[_TermMeta(state_factor_count=1, linear_multiplier=-derivative.dy * derivative.inv_laplacian, scalar_value=None)],
+            in_physical_domain=False,
         ),
         "uh": _Expr(
             eval_fn=lambda state: state.uh,
@@ -344,6 +508,7 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
             const_value=None,
             linear_multiplier=-derivative.dy * derivative.inv_laplacian,
             terms=[_TermMeta(state_factor_count=1, linear_multiplier=-derivative.dy * derivative.inv_laplacian, scalar_value=None)],
+            in_physical_domain=False,
         ),
         "v": _Expr(
             eval_fn=lambda state: state.vh,
@@ -351,6 +516,7 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
             const_value=None,
             linear_multiplier=derivative.dx * derivative.inv_laplacian,
             terms=[_TermMeta(state_factor_count=1, linear_multiplier=derivative.dx * derivative.inv_laplacian, scalar_value=None)],
+            in_physical_domain=False,
         ),
         "vh": _Expr(
             eval_fn=lambda state: state.vh,
@@ -358,6 +524,23 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
             const_value=None,
             linear_multiplier=derivative.dx * derivative.inv_laplacian,
             terms=[_TermMeta(state_factor_count=1, linear_multiplier=derivative.dx * derivative.inv_laplacian, scalar_value=None)],
+            in_physical_domain=False,
+        ),
+        "x": _Expr(
+            eval_fn=lambda state: torch.meshgrid(derivative.grid.y, derivative.grid.x, indexing='ij')[1].unsqueeze(0),
+            depends_on_state=False,
+            const_value=None,
+            linear_multiplier=None,
+            terms=[_TermMeta(state_factor_count=0, linear_multiplier=None, scalar_value=None)],
+            in_physical_domain=True,
+        ),
+        "y": _Expr(
+            eval_fn=lambda state: torch.meshgrid(derivative.grid.y, derivative.grid.x, indexing='ij')[0].unsqueeze(0),
+            depends_on_state=False,
+            const_value=None,
+            linear_multiplier=None,
+            terms=[_TermMeta(state_factor_count=0, linear_multiplier=None, scalar_value=None)],
+            in_physical_domain=True,
         ),
     }
 
@@ -366,8 +549,8 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
         "dy": derivative.dy,
         "lap": derivative.laplacian,
         "invlap": derivative.inv_laplacian,
-        "hodge": one,
-        "star": one,
+        # "hodge": one,
+        # "star": one,
     }
 
     stack = []
@@ -401,7 +584,7 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
                 ))
                 continue
             stack.append(_Expr(
-                eval_fn=lambda state: -a.eval_fn(state),
+                        eval_fn=lambda state, a=a: -(to_spectral(a.eval_fn(state)) if a.in_physical_domain else a.eval_fn(state)),
                 depends_on_state=a.depends_on_state,
                 const_value=(-a.const_value if a.const_value is not None else None),
                 linear_multiplier=(-a.linear_multiplier if a.linear_multiplier is not None else None),
@@ -416,7 +599,7 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
             if _is_vec(a):
                 stack.append(_VecExpr(
                     x=_Expr(
-                        eval_fn=lambda state: derivative.dealias(a.x.eval_fn(state).clone()),
+                        eval_fn=lambda state, a=a: derivative.dealias((to_spectral(a.x.eval_fn(state)) if a.x.in_physical_domain else a.x.eval_fn(state)).clone()),
                         depends_on_state=a.x.depends_on_state,
                         const_value=None,
                         linear_multiplier=(derivative.dealias(a.x.linear_multiplier.clone()) if a.x.linear_multiplier is not None else None),
@@ -428,9 +611,10 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
                             )
                             for t in a.x.terms
                         ],
+                        in_physical_domain=False,
                     ),
                     y=_Expr(
-                        eval_fn=lambda state: derivative.dealias(a.y.eval_fn(state).clone()),
+                        eval_fn=lambda state, a=a: derivative.dealias((to_spectral(a.y.eval_fn(state)) if a.y.in_physical_domain else a.y.eval_fn(state)).clone()),
                         depends_on_state=a.y.depends_on_state,
                         const_value=None,
                         linear_multiplier=(derivative.dealias(a.y.linear_multiplier.clone()) if a.y.linear_multiplier is not None else None),
@@ -442,11 +626,12 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
                             )
                             for t in a.y.terms
                         ],
+                        in_physical_domain=False,
                     ),
                 ))
                 continue
             stack.append(_Expr(
-                eval_fn=lambda state: derivative.dealias(a.eval_fn(state).clone()),
+                eval_fn=lambda state, a=a: derivative.dealias((to_spectral(a.eval_fn(state)) if a.in_physical_domain else a.eval_fn(state)).clone()),
                 depends_on_state=a.depends_on_state,
                 const_value=None,
                 linear_multiplier=(derivative.dealias(a.linear_multiplier.clone()) if a.linear_multiplier is not None else None),
@@ -458,6 +643,7 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
                     )
                     for t in a.terms
                 ],
+                in_physical_domain=False,
             ))
             continue
 
@@ -506,17 +692,19 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
             stack.append(_apply_linear_unary(a, unary_linear_ops[lower], token))
             continue
 
+        if lower in nonlinear_unary_ops:
+            if len(stack) < 1:
+                raise ValueError(f"RPN parse error: '{token}' needs one operand")
+            a = stack.pop()
+            stack.append(_apply_nonlinear_unary(a, nonlinear_unary_ops[lower], token))
+            continue
+
         if lower in {"+", "-", "*", "mul"}:
             if len(stack) < 2:
                 raise ValueError(f"RPN parse error: '{token}' needs two operands")
             b = stack.pop()
             a = stack.pop()
-            if lower == "+":
-                stack.append(_binary_add(a, b))
-            elif lower == "-":
-                stack.append(_binary_sub(a, b))
-            else:
-                stack.append(_binary_mul(a, b))
+            stack.append(binary_ops[lower](a, b))
             continue
 
         if lower in {"dot", "inner"}:
@@ -526,12 +714,15 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
             a = stack.pop()
             if (not _is_vec(a)) or (not _is_vec(b)):
                 raise ValueError(f"RPN type error: '{token}' expects two vectors")
-            stack.append(
-                _binary_add_scalar(
-                    _binary_mul_scalar(a.x, b.x),
-                    _binary_mul_scalar(a.y, b.y),
-                )
+            dot_expr = _Expr(
+                eval_fn=lambda state: to_physical(a.x.eval_fn(state)) * to_physical(b.x.eval_fn(state)) + to_physical(a.y.eval_fn(state)) * to_physical(b.y.eval_fn(state)),
+                depends_on_state=True,
+                const_value=None,
+                linear_multiplier=None,
+                terms=[_TermMeta(state_factor_count=0, linear_multiplier=None, scalar_value=None)],  # Simplified
+                in_physical_domain=True,  # Dot product is nonlinear, physical
             )
+            stack.append(dot_expr)
             continue
 
         if lower in {"jacobian", "j"}:
@@ -542,7 +733,7 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
             if _is_vec(a) or _is_vec(b):
                 raise ValueError(f"RPN type error: '{token}' expects scalar operands")
             stack.append(_Expr(
-                eval_fn=lambda state: _jacobian(a.eval_fn(state), b.eval_fn(state), derivative),
+                eval_fn=lambda state, a=a, b=b: _jacobian(a.eval_fn(state), b.eval_fn(state), derivative),
                 depends_on_state=True,
                 const_value=None,
                 linear_multiplier=None,
@@ -554,6 +745,7 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
                     )
                     for ta in a.terms for tb in b.terms
                 ],
+                in_physical_domain=True,  # Nonlinear
             ))
             continue
 
@@ -567,17 +759,20 @@ def compile_pde_rpn(rpn, derivative, pde_params) -> CompiledPDE:
         raise ValueError("RPN type error: final expression must be scalar")
 
     linear_operator = None
-    for term in expr.terms:
-        if term.state_factor_count <= 1 and term.linear_multiplier is not None:
-            if linear_operator is None:
-                linear_operator = term.linear_multiplier
-            else:
-                linear_operator = linear_operator + term.linear_multiplier
+    if not expr.in_physical_domain:
+        for term in expr.terms:
+            if term.state_factor_count <= 1 and term.linear_multiplier is not None:
+                if linear_operator is None:
+                    linear_operator = term.linear_multiplier
+                else:
+                    linear_operator = linear_operator + term.linear_multiplier
 
     nonlinear_source = None
-    if expr.depends_on_state or expr.const_value is not None:
+    if expr.depends_on_state or expr.const_value is not None or expr.in_physical_domain:
         def _rhs(state):
             rhs = expr.eval_fn(state)
+            if expr.in_physical_domain:
+                rhs = to_spectral(rhs)
             if not torch.is_tensor(rhs):
                 rhs = float(rhs) * torch.ones_like(state.qh)
             if linear_operator is not None:
