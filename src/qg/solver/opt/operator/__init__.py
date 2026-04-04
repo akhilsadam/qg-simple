@@ -3,7 +3,8 @@ from qg.solver.util import _Math
 from qg.solver.opt.operator.jacobian import jacobian_pq
 from qg.solver.opt.operator.obstacle import solve_mask, brinkman_no_slip_penalty, brinkman_friction_slip_penalty
 from qg.solver.opt.operator.vortex import vortex_stretching
-from qg.solver.opt.operator.pde_rpn import compile_pde_rpn
+# from qg.solver.opt.operator.pde_rpn import compile_pde_rpn
+from qg.solver.opt.operator.rpn import compile_pde_rpn
 
 
 def _compile_custom_pde_if_present(params, derivative):
