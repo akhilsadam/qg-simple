@@ -188,112 +188,71 @@ def normalize_token(token: str) -> str:
 
 def tokenize_rpn(
     rpn: Union[str, Sequence[str]],
-    scalar_params: Optional[Dict[str, float]] = None,
-) -> Tuple[List[str], List[Optional[float]]]:
+) -> Tuple[List[int], List[float]]:
     """
     Convert a raw RPN expression to (canonical_tokens, scalar_values).
 
-    canonical_tokens : list of canonical vocab names
+    canonical_tokens : list of canonical vocab ids
     scalar_values    : parallel list; float value for __scalar__ tokens, else None
 
     Parameters
     ----------
     rpn : str or list of str
         Raw RPN expression.
-    scalar_params : dict, optional
-        Mapping from named param token (e.g. "r") to its float value.
-        Named params not found here get value 0.0 with a warning.
+    amplitude
     """
     if isinstance(rpn, str):
         raw_tokens = [t for t in rpn.strip().split() if t]
     else:
         raw_tokens = list(rpn)
 
-    if scalar_params is None:
-        scalar_params = {}
-
-    canonical: List[str]             = []
-    values:    List[Optional[float]] = []
+    canonical: List[int]   = []
+    values:    List[float] = []
 
     for tok in raw_tokens:
         canon = normalize_token(tok)
-        canonical.append(canon)
+        canonical.append(TOKEN_TO_ID[canon])
 
         if canon == "__scalar__":
             # Try numeric literal first.
             try:
                 values.append(float(tok))
             except ValueError:
-                # Named param.
-                val = scalar_params.get(tok.lower(), None)
-                if val is None:
-                    import warnings
-                    warnings.warn(
-                        f"Named param '{tok}' not found in scalar_params; defaulting to 0.0",
-                        stacklevel=2,
-                    )
-                    val = 0.0
+                val = 0.0
                 values.append(val)
         else:
-            values.append(None)
+            values.append(1.0)
 
     return canonical, values
 
 
-# ---------------------------------------------------------------------------
-# Scalar MLP — maps a single float to an embed_dim vector
-# ---------------------------------------------------------------------------
 
-class ScalarEmbedding(nn.Module):
+def batch_tokenize_rpn(
+    rpns: Sequence[Union[str, Sequence[str]]],
+    max_len: Optional[int] = 100,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-    Embeds a single scalar value (numeric constant or param value) into R^embed_dim.
+    Tokenize a batch of RPN expressions, padding to max_len.
 
-    Architecture: Fourier feature encoding → 2-layer MLP
-    The Fourier features help the network distinguish small vs large scalars
-    and negative vs positive values without requiring scale normalisation.
+    Returns
+    -------
+    token_ids : (B, L) long
+    amplitude : (B, L) float
     """
+    B = len(rpns)
+    token_ids = torch.zeros((B, max_len), dtype=torch.long)
+    amplitude = torch.zeros((B, max_len), dtype=torch.float)
+    
+    pad_id = TOKEN_TO_ID["__scalar__"]
+    token_ids.fill_(pad_id)
 
-    def __init__(self, embed_dim: int, n_fourier: int = 16):
-        super().__init__()
-        self.embed_dim = embed_dim
-        self.n_fourier = n_fourier
-
-        # Fixed Fourier feature frequencies (not learned).
-        # Shape: (n_fourier,)
-        freqs = torch.exp(
-            torch.linspace(math.log(0.01), math.log(100.0), n_fourier)
-        )
-        self.register_buffer("freqs", freqs)
-
-        # MLP: (2*n_fourier + 1) → embed_dim
-        in_dim = 2 * n_fourier + 1  # sin, cos features + raw value
-        self.mlp = nn.Sequential(
-            nn.Linear(in_dim, embed_dim),
-            nn.SiLU(),
-            nn.Linear(embed_dim, embed_dim),
-        )
-
-    def forward(self, values: torch.Tensor) -> torch.Tensor:
-        """
-        Parameters
-        ----------
-        values : (B,) or (B, L) float tensor of scalar values
-
-        Returns
-        -------
-        (B, embed_dim) or (B, L, embed_dim) tensor
-        """
-        orig_shape = values.shape
-        v = values.reshape(-1, 1)                    # (N, 1)
-        phases = v * self.freqs.unsqueeze(0)         # (N, n_fourier)
-        feats = torch.cat([
-            torch.sin(phases),
-            torch.cos(phases),
-            v,
-        ], dim=-1)                                   # (N, 2*n_fourier + 1)
-        out = self.mlp(feats)                        # (N, embed_dim)
-        return out.reshape(*orig_shape, self.embed_dim)
-
+    for i, rpn in enumerate(rpns):
+        c, v = tokenize_rpn(rpn)
+        L = min(len(c), max_len)
+        token_ids[i, :L] = torch.tensor(c[:L], dtype=torch.long)
+        amplitude[i, :L] = torch.tensor(v[:L], dtype=torch.float)          
+        
+    return token_ids, amplitude
 
 # ---------------------------------------------------------------------------
 # Token embedding table
@@ -361,8 +320,7 @@ class TokenEmbedding(nn.Module):
         if not hasattr(self, "_id_to_cat") or self._id_to_cat.device != token_ids.device:
             self._id_to_cat = self._build_id_to_cat_buffer(token_ids.device)
 
-        cat_ids = self._id_to_cat[token_ids]                   # (B, L)
-
+        cat_ids = self._id_to_cat[token_ids]           # (B, L)
         tok_emb = self.token_embed(token_ids)          # (B, L, E)
         cat_emb = self.category_embed(cat_ids)         # (B, L, E)
         return self.layer_norm(tok_emb + cat_emb)      # (B, L, E)
@@ -379,93 +337,29 @@ class RPNTokenEmbedder(nn.Module):
     Input
     -----
     token_ids   : (B, L) long     — token IDs (use TOKEN_TO_ID)
-    scalar_vals : (B, L) float    — scalar values; 0.0 for non-scalar tokens
-    scalar_mask : (B, L) bool     — True where token is __scalar__
+    amplitude   : (B, L) float    — amplitude, 1.0 for non-scalar, 0.0 for pad
 
     Output
     ------
-    embeddings  : (B, L, embed_dim) float, layer-normed per position
+    embeddings  : (B, L, embed_dim) float
 
     The embedder can be used standalone (for inspection / debugging) or as
-    the first stage of the RPNEncoder defined below.
+    the first stage of the RPNEncoder defined later.
     """
 
-    def __init__(self, embed_dim: int = 32, scalar_fourier: int = 16):
+    def __init__(self, embed_dim: int = 32):
         super().__init__()
         self.embed_dim = embed_dim
-
         self.token_emb  = TokenEmbedding(embed_dim)
-        self.scalar_emb = ScalarEmbedding(embed_dim, n_fourier=scalar_fourier)
-        self.out_norm   = nn.LayerNorm(embed_dim)
 
     def forward(
         self,
-        token_ids:   torch.Tensor,   # (B, L)
-        scalar_vals: torch.Tensor,   # (B, L)  float
-        scalar_mask: torch.Tensor,   # (B, L)  bool
-    ) -> torch.Tensor:               # (B, L, E)
+        token_ids:      torch.Tensor,   # (B, L)
+        amplitude:      torch.Tensor,   # (B, L)  float
+    ) -> torch.Tensor:                  # (B, L, E)
 
         tok_emb = self.token_emb(token_ids)          # (B, L, E)
-
-        # Scalar embedding — compute for all positions, zero-out non-scalars.
-        sc_emb = self.scalar_emb(scalar_vals)        # (B, L, E)
-        sc_emb = sc_emb * scalar_mask.unsqueeze(-1).float()
-
-        # For scalar positions, replace token embed with scalar embed.
-        # For non-scalar positions, keep token embed (scalar contrib is zero).
-        combined = torch.where(
-            scalar_mask.unsqueeze(-1).expand_as(tok_emb),
-            sc_emb,
-            tok_emb,
-        )
-        return self.out_norm(combined)               # (B, L, E)
-
-    # ------------------------------------------------------------------
-    # Convenience: build inputs from tokenize_rpn output
-    # ------------------------------------------------------------------
-
-    def prepare_inputs(
-        self,
-        canonical_tokens: List[str],
-        scalar_values:    List[Optional[float]],
-        device: Optional[torch.device] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Convert tokenize_rpn output to tensors for a single expression (B=1).
-
-        Returns (token_ids, scalar_vals, scalar_mask), all on `device`.
-        """
-        ids    = [TOKEN_TO_ID[t] for t in canonical_tokens]
-        vals   = [v if v is not None else 0.0 for v in scalar_values]
-        is_sc  = [v is not None for v in scalar_values]
-
-        t_ids  = torch.tensor(ids,  dtype=torch.long).unsqueeze(0)
-        t_vals = torch.tensor(vals, dtype=torch.float32).unsqueeze(0)
-        t_mask = torch.tensor(is_sc, dtype=torch.bool).unsqueeze(0)
-
-        if device is not None:
-            t_ids  = t_ids.to(device)
-            t_vals = t_vals.to(device)
-            t_mask = t_mask.to(device)
-
-        return t_ids, t_vals, t_mask
-
-    def embed_rpn(
-        self,
-        rpn: Union[str, Sequence[str]],
-        scalar_params: Optional[Dict[str, float]] = None,
-        device: Optional[torch.device] = None,
-    ) -> torch.Tensor:
-        """
-        End-to-end convenience: raw RPN string → (1, L, embed_dim) tensor.
-
-        Primarily for debugging and inspection; training should use batched inputs.
-        """
-        canonical, values = tokenize_rpn(rpn, scalar_params)
-        ids, vals, mask   = self.prepare_inputs(canonical, values, device)
-        with torch.no_grad():
-            return self.forward(ids, vals, mask)
-
+        return tok_emb * amplitude[..., None]
 
 # ---------------------------------------------------------------------------
 # Utility: pretty-print vocabulary
@@ -498,61 +392,6 @@ def get_unary_tokens() -> List[str]:
 
 def get_vector_tokens() -> List[str]:
     return get_tokens_by_category(TokenCategory.VECTOR_OP) + get_tokens_by_category(TokenCategory.JACOBIAN)
-
-
-def batch_tokenize_rpn(
-    rpns: Sequence[Union[str, Sequence[str]]],
-    scalar_params_list: Optional[Sequence[Optional[Dict[str, float]]]] = None,
-    max_len: Optional[int] = None,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """
-    Tokenize a batch of RPN expressions, padding to max_len.
-
-    Returns
-    -------
-    token_ids : (B, L) long
-    scalar_vals: (B, L) float
-    scalar_mask: (B, L) bool
-    """
-    if scalar_params_list is None:
-        scalar_params_list = [None] * len(rpns)
-    if len(scalar_params_list) != len(rpns):
-        raise ValueError("scalar_params_list must match rpns length")
-
-    canonicals = []
-    values = []
-    lengths = []
-
-    for rpn, params in zip(rpns, scalar_params_list):
-        c, v = tokenize_rpn(rpn, params)
-        canonicals.append(c)
-        values.append(v)
-        lengths.append(len(c))
-
-    if max_len is None:
-        max_len = max(lengths)
-    if max_len <= 0:
-        raise ValueError("max_len must be positive")
-
-    B = len(rpns)
-    token_ids = torch.zeros((B, max_len), dtype=torch.long)
-    scalar_vals = torch.zeros((B, max_len), dtype=torch.float)
-    scalar_mask = torch.zeros((B, max_len), dtype=torch.bool)
-
-    # Use padding token __scalar__ (zero value) for simplicity
-    pad_id = TOKEN_TO_ID["__scalar__"]
-
-    token_ids.fill_(pad_id)
-
-    for i in range(B):
-        L = min(lengths[i], max_len)
-        for j in range(L):
-            token_ids[i, j] = TOKEN_TO_ID[canonicals[i][j]]
-            if values[i][j] is not None:
-                scalar_vals[i, j] = float(values[i][j])
-                scalar_mask[i, j] = True
-
-    return token_ids, scalar_vals, scalar_mask
 
 
 def _rand_scalar_literal() -> str:

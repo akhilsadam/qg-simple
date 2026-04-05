@@ -55,6 +55,14 @@ class TransformResult:
     """Padding ID used in ``tokens`` for alignment (not a semantic token)."""
 
 
+@dataclass
+class TransformResultWithAmplitude(TransformResult):
+    """Result of applying a rule with amplitude tracking."""
+
+    amplitude: torch.Tensor
+    """(B, L') amplitude values aligned with transformed tokens."""
+
+
 def _pad_rows_to_length(
     rows: Sequence[torch.Tensor],
     pad_id: int,
@@ -67,6 +75,24 @@ def _pad_rows_to_length(
     dtype = rows[0].dtype
     B = len(rows)
     out = torch.full((B, max_len), pad_id, dtype=dtype, device=device)
+    for i, r in enumerate(rows):
+        L = r.numel()
+        out[i, :L] = r
+    return out
+
+
+def _pad_rows_to_length_float(
+    rows: Sequence[torch.Tensor],
+    pad_value: float,
+) -> torch.Tensor:
+    """Stack 1D float rows into (B, max_len) with right padding."""
+    if not rows:
+        raise ValueError("rows must be non-empty")
+    max_len = max(int(r.numel()) for r in rows)
+    device = rows[0].device
+    dtype = rows[0].dtype
+    B = len(rows)
+    out = torch.full((B, max_len), pad_value, dtype=dtype, device=device)
     for i, r in enumerate(rows):
         L = r.numel()
         out[i, :L] = r
@@ -103,30 +129,85 @@ class SimpleAlgebraicRule:
     def apply(
         self,
         token_ids: torch.Tensor,
+        amplitude: torch.Tensor,
         vocab: Dict[str, int],
         pad_token_id: int,
-    ) -> TransformResult:
+    ) -> TransformResultWithAmplitude:
         """
         Rewrite every batch row where ``matches`` is True; others are unchanged
         (then padded/truncated so all rows share the same width).
+        Returns transformed tokens and correspondingly transformed amplitudes.
         """
         matched = self.matches(token_ids, vocab)
         if not matched.any():
-            return TransformResult(token_ids.clone(), matched, pad_token_id)
+            return TransformResultWithAmplitude(token_ids.clone(), matched, pad_token_id, amplitude.clone())
 
-        B, _ = token_ids.shape
+        B, L = token_ids.shape
         device = token_ids.device
-        rows_out: List[torch.Tensor] = []
+        token_rows_out: List[torch.Tensor] = []
+        amp_rows_out: List[torch.Tensor] = []
+
         for b in range(B):
-            row = token_ids[b].contiguous()
+            token_row = token_ids[b].contiguous()
+            amp_row = amplitude[b].contiguous()
+
             if matched[b]:
-                sub = row.unsqueeze(0)
-                new_sub = self._transform_fn(sub, vocab).squeeze(0)
-                rows_out.append(new_sub)
+                token_sub = token_row.unsqueeze(0)
+                amp_sub = amp_row.unsqueeze(0)
+
+                # Transform tokens
+                new_token_sub = self._transform_fn(token_sub, vocab).squeeze(0)
+
+                # Create mapping from old positions to new positions
+                # For simple suffix rewrites, we can map amplitudes directly
+                new_amp = torch.zeros_like(new_token_sub, dtype=torch.float)
+
+                # Map amplitudes based on token positions
+                # For suffix-only rewrites, prefix amplitudes stay same
+                new_len = new_token_sub.numel()
+                old_len = token_row.numel()
+                common_prefix_len = min(old_len - self.pattern_length, new_len - self.output_length)
+
+                # Copy unchanged prefix amplitudes
+                if common_prefix_len > 0:
+                    new_amp[:common_prefix_len] = amp_row[:common_prefix_len]
+
+                # For the rewritten suffix, map amplitudes based on token equality
+                # Simple algorithm: if token appears in original suffix, copy its amplitude
+                old_suffix = token_row[common_prefix_len:old_len]
+                old_suffix_amp = amp_row[common_prefix_len:old_len]
+                new_suffix = new_token_sub[common_prefix_len:common_prefix_len + self.output_length]
+
+                # Map amplitudes by finding matching tokens
+                # This is approximate but works for commutative swaps
+                for i in range(self.output_length):
+                    if i < new_suffix.numel():
+                        token = new_suffix[i]
+                        # Find this token in old suffix
+                        for j in range(old_suffix.numel()):
+                            if old_suffix[j] == token:
+                                new_amp[common_prefix_len + i] = old_suffix_amp[j]
+                                break
+                        else:
+                            # Token not found (new token), use default 0.0
+                            new_amp[common_prefix_len + i] = 0.0
+
+                token_rows_out.append(new_token_sub)
+                amp_rows_out.append(new_amp)
             else:
-                rows_out.append(row)
-        stacked = _pad_rows_to_length(rows_out, pad_id=pad_token_id)
-        return TransformResult(stacked, matched, pad_token_id)
+                token_rows_out.append(token_row)
+                amp_rows_out.append(amp_row)
+
+        # Pad both tokens and amplitudes
+        stacked_tokens = _pad_rows_to_length(token_rows_out, pad_id=pad_token_id)
+        stacked_amps = _pad_rows_to_length_float(amp_rows_out, pad_value=0.0)  # Padding scalar value is 0.0
+
+        return TransformResultWithAmplitude(
+            stacked_tokens,
+            matched,
+            pad_token_id,
+            stacked_amps
+        )
 
 
 class AlgebraicRuleSet:
@@ -158,16 +239,17 @@ class AlgebraicRuleSet:
                 out.append(i)
         return out
 
-    def apply_rule(self, rule_index: int, token_ids: torch.Tensor) -> TransformResult:
+    def apply_rule(self, rule_index: int, token_ids: torch.Tensor, amplitude: torch.Tensor) -> TransformResultWithAmplitude:
         """Apply one rule by index (raises if index invalid)."""
         rule = self.rules[rule_index]
-        return rule.apply(token_ids, self.vocab, self.pad_token_id)
+        return rule.apply(token_ids, amplitude, self.vocab, self.pad_token_id)
 
     def apply_random_rule(
         self,
         token_ids: torch.Tensor,
+        amplitude: torch.Tensor,
         generator: Optional[torch.Generator] = None,
-    ) -> Optional[TransformResult]:
+    ) -> Optional[TransformResultWithAmplitude]:
         """
         Pick uniformly among rules that match at least one sequence; return
         ``None`` if no rule applies.
@@ -179,22 +261,25 @@ class AlgebraicRuleSet:
             j = int(torch.randint(len(idxs), (1,)).item())
         else:
             j = int(torch.randint(len(idxs), (1,), generator=generator).item())
-        return self.apply_rule(idxs[j], token_ids)
+        return self.apply_rule(idxs[j], token_ids, amplitude)
 
     def random_positive_view(
         self,
         token_ids: torch.Tensor,
+        amplitude: torch.Tensor,
         generator: Optional[torch.Generator] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        Convenience for contrastive learning: ``(anchor, positive)`` token IDs
-        of equal shape. If no rule applies, returns ``(anchor, anchor)``.
+        Convenience for contrastive learning: returns ``(anchor_tokens, anchor_amp, positive_tokens, positive_amp)``
+        where positive is an algebraically equivalent rewrite. If no rule applies, returns ``(anchor, anchor)``.
         """
-        anchor = token_ids.clone()
-        res = self.apply_random_rule(anchor, generator=generator)
+        anchor_tokens = token_ids.clone()
+        anchor_amp = amplitude.clone()
+        res = self.apply_random_rule(anchor_tokens, anchor_amp, generator=generator)
         if res is None:
-            return anchor, anchor
-        return anchor, res.tokens
+            return anchor_tokens, anchor_amp
+
+        return res.tokens, res.amplitude
 
 
 class CompositeAlgebraicRuleSet(AlgebraicRuleSet):

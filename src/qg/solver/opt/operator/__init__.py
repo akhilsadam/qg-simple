@@ -7,6 +7,7 @@ from qg.solver.opt.operator.vortex import vortex_stretching
 from qg.solver.opt.operator.rpn import compile_pde_rpn
 
 
+
 def _compile_custom_pde_if_present(params, derivative):
     pde_rpn = getattr(params, "rpn", None)
     if not pde_rpn:
