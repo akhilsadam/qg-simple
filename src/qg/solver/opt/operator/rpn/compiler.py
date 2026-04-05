@@ -379,7 +379,7 @@ class OperatorRegistry:
         "exp":    torch.exp,
         "square": lambda x: x ** 2,
         "cube":   lambda x: x ** 3,
-        "abs":    torch.abs,
+        # "abs":    torch.abs,
     }
 
     def __init__(self, derivative):
@@ -441,8 +441,8 @@ def _build_variable_table(derivative) -> dict:
         "omega": _state_expr(lambda s: s.qh, one),
         "psi":   _state_expr(lambda s: s.ph,  d.inv_laplacian),
         "ph":    _state_expr(lambda s: s.ph,  d.inv_laplacian),
-        "u":     _state_expr(lambda s: s.uh, -d.dy * d.inv_laplacian),
-        "uh":    _state_expr(lambda s: s.uh, -d.dy * d.inv_laplacian),
+        "u":     _state_expr(lambda s: s.uh, -1 * d.dy * d.inv_laplacian),
+        "uh":    _state_expr(lambda s: s.uh, -1 * d.dy * d.inv_laplacian),
         "v":     _state_expr(lambda s: s.vh,  d.dx * d.inv_laplacian),
         "vh":    _state_expr(lambda s: s.vh,  d.dx * d.inv_laplacian),
         "x": _Expr(
@@ -570,7 +570,7 @@ class RPNCompiler:
             stack.append(_VecExpr(x=ExprBuilder.mul(neg_one, a.x), y=ExprBuilder.mul(neg_one, a.y)))
             return
         stack.append(_Expr(
-            eval_fn=lambda state, _a=a: -(
+            eval_fn=lambda state, _a=a: -1.0 * (
                 to_spectral(_a.eval_fn(state)) if _a.in_physical_domain else _a.eval_fn(state)
             ),
             depends_on_state=a.depends_on_state,
