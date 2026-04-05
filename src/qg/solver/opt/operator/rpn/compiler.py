@@ -74,8 +74,8 @@ class ExprBuilder:
         return [
             _TermMeta(
                 state_factor_count=t.state_factor_count,
-                linear_multiplier=-t.linear_multiplier if t.linear_multiplier is not None else None,
-                scalar_value=-t.scalar_value if t.scalar_value is not None else None,
+                linear_multiplier=-1.0 * t.linear_multiplier if t.linear_multiplier is not None else None,
+                scalar_value=-1.0 * t.scalar_value if t.scalar_value is not None else None,
             )
             for t in terms
         ]
@@ -158,22 +158,22 @@ class ExprBuilder:
                     bv = bv.unsqueeze(0)
                 return torch.add(av, bv, alpha=-1) # avoids add_kernel on complex<float>
         else:
-            eval_fn = lambda state: a.eval_fn(state) - b.eval_fn(state)
+            eval_fn = lambda state: a.eval_fn(state) + -1.0 * b.eval_fn(state)
 
         depends = a.depends_on_state or b.depends_on_state
         const_value = (
-            a.const_value - b.const_value
+            a.const_value + -1.0 * b.const_value
             if (not depends) and a.const_value is not None and b.const_value is not None
             else None
         )
 
         lin = None
         if a.linear_multiplier is not None and b.linear_multiplier is not None:
-            lin = a.linear_multiplier - b.linear_multiplier
+            lin = a.linear_multiplier + -1.0 * b.linear_multiplier
         elif a.linear_multiplier is not None and not b.depends_on_state:
             lin = a.linear_multiplier
         elif b.linear_multiplier is not None and not a.depends_on_state:
-            lin = -b.linear_multiplier
+            lin = -1.0 * b.linear_multiplier
 
         terms = ExprBuilder._cross_terms_add(a.terms, b.terms, sign=-1)
 
@@ -441,8 +441,8 @@ def _build_variable_table(derivative) -> dict:
         "omega": _state_expr(lambda s: s.qh, one),
         "psi":   _state_expr(lambda s: s.ph,  d.inv_laplacian),
         "ph":    _state_expr(lambda s: s.ph,  d.inv_laplacian),
-        "u":     _state_expr(lambda s: s.uh, -1 * d.dy * d.inv_laplacian),
-        "uh":    _state_expr(lambda s: s.uh, -1 * d.dy * d.inv_laplacian),
+        "u":     _state_expr(lambda s: s.uh, -1.0 * d.dy * d.inv_laplacian),
+        "uh":    _state_expr(lambda s: s.uh, -1.0 * d.dy * d.inv_laplacian),
         "v":     _state_expr(lambda s: s.vh,  d.dx * d.inv_laplacian),
         "vh":    _state_expr(lambda s: s.vh,  d.dx * d.inv_laplacian),
         "x": _Expr(
@@ -579,8 +579,8 @@ class RPNCompiler:
         stack.append(_Expr(
             eval_fn=_neg_eval,
             depends_on_state=a.depends_on_state,
-            const_value=-a.const_value if a.const_value is not None else None,
-            linear_multiplier=-a.linear_multiplier if a.linear_multiplier is not None else None,
+            const_value=-1.0 * a.const_value if a.const_value is not None else None,
+            linear_multiplier=-1.0 * a.linear_multiplier if a.linear_multiplier is not None else None,
             terms=ExprBuilder.negate_terms(a.terms),
         ))
 
@@ -700,7 +700,7 @@ class RPNCompiler:
                 if not torch.is_tensor(rhs):
                     rhs = float(rhs) * torch.ones_like(state.qh)
                 if _lin is not None:
-                    rhs = rhs - _lin * state.qh
+                    rhs = rhs + (-1.0) * _lin * state.qh
                 return d.dealias(rhs)
 
             nonlinear_source = _rhs
