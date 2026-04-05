@@ -94,7 +94,7 @@ class QG():
                 return solution[:,:save_index,...]  # Return what we have so far
                 break
             
-            if lim_check > 0 and torch.abs(state.qh).mean() > lim_check:  # Arbitrary large value
+            if lim_check > 0 and torch.abs(state.qh.real).mean() > lim_check:  # Arbitrary large value
                 self.logger.warning(f"Value overflow detected at iteration {it}")
                 return solution[:,:save_index,...]  # Return what we have so far
                 break
