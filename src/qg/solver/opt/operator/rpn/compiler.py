@@ -48,6 +48,23 @@ class ExprBuilder:
             in_physical_domain=False,
         )
 
+    @staticmethod
+    def const_field(field: torch.Tensor, in_physical_domain: bool = False) -> _Expr:
+        """Wraps a precomputed constant tensor field (not a scalar).
+
+        Unlike ``const``, ``const_value`` is left as ``None`` so that
+        downstream ops (add, mul, apply_linear …) never try to treat the
+        tensor as a plain Python scalar.
+        """
+        return _Expr(
+            eval_fn=lambda state, _f=field: _f,
+            depends_on_state=False,
+            const_value=None,
+            linear_multiplier=None,
+            terms=[_TermMeta(state_factor_count=0, linear_multiplier=None, scalar_value=None)],
+            in_physical_domain=in_physical_domain,
+        )
+
     # ------------------------------------------------------------------
     # Term-list helpers
     # ------------------------------------------------------------------
@@ -199,8 +216,14 @@ class ExprBuilder:
 
     @staticmethod
     def apply_linear(expr: _Expr, op_multiplier, op_name: str) -> _Expr:
-        if not expr.depends_on_state and expr.const_value is not None:
-            raise ValueError(f"Cannot apply '{op_name}' to a state-independent scalar expression")
+
+        if not expr.depends_on_state:
+            raw = expr.eval_fn(None)
+            if not isinstance(raw, torch.Tensor):
+                raw = torch.tensor(float(raw))
+            field_h = to_spectral(raw) if expr.in_physical_domain else raw
+            result_h = op_multiplier * field_h
+            return ExprBuilder.const_field(result_h, in_physical_domain=False)
 
         lin = op_multiplier * expr.linear_multiplier if expr.linear_multiplier is not None else None
         terms = [
@@ -225,31 +248,18 @@ class ExprBuilder:
 
     @staticmethod
     def apply_nonlinear(expr: _Expr, func, func_name: str) -> _Expr:
-        if not expr.depends_on_state:
-            raw = expr.eval_fn(None)
-            physical = (
-                raw if expr.in_physical_domain
-                else (to_physical(raw) if isinstance(raw, torch.Tensor) else raw)
+        def _eval(state):
+            val = expr.eval_fn(state) if expr.in_physical_domain else (
+                to_physical(expr.eval_fn(state))
+                if isinstance(expr.eval_fn(state), torch.Tensor)
+                else expr.eval_fn(state)
             )
-            result = func(physical)
-            return _Expr(
-                eval_fn=lambda state: result,
-                depends_on_state=False,
-                const_value=None,
-                linear_multiplier=None,
-                terms=[_TermMeta(state_factor_count=0, linear_multiplier=None, scalar_value=None)],
-                in_physical_domain=True,
-            )
+            if not isinstance(val, torch.Tensor):
+                val = torch.tensor(float(val))
+            return func(val)
 
         return _Expr(
-            eval_fn=lambda state: func(
-                expr.eval_fn(state) if expr.in_physical_domain
-                else (
-                    to_physical(expr.eval_fn(state))
-                    if isinstance(expr.eval_fn(state), torch.Tensor)
-                    else expr.eval_fn(state)
-                )
-            ),
+            eval_fn=_eval,
             depends_on_state=True,
             const_value=None,
             linear_multiplier=None,
@@ -518,7 +528,32 @@ class RPNCompiler:
 
         if self.ops.is_nonlinear_unary(lower):
             a = self._pop(stack, lower, n=1)
-            stack.append(ExprBuilder.vec_apply_nonlinear(a, self.ops.get_nonlinear_unary(lower), lower))
+            func = self.ops.get_nonlinear_unary(lower)
+            if _is_vec(a):
+                if not a.x.depends_on_state and not a.y.depends_on_state:
+                    # Constant vector field — precompute each component.
+                    rx = func(ExprBuilder._to_physical_safe(a.x.eval_fn(None), a.x.in_physical_domain))
+                    ry = func(ExprBuilder._to_physical_safe(a.y.eval_fn(None), a.y.in_physical_domain))
+                    stack.append(_VecExpr(
+                        x=ExprBuilder.const_field(rx, in_physical_domain=True),
+                        y=ExprBuilder.const_field(ry, in_physical_domain=True),
+                    ))
+                    return
+            else:
+                if not a.depends_on_state:
+                    # Constant scalar or field — precompute eagerly.
+                    raw = ExprBuilder._to_physical_safe(a.eval_fn(None), a.in_physical_domain)
+                    if not isinstance(raw, torch.Tensor):
+                        raw = torch.tensor(float(raw))
+                    result = func(raw)
+                    if isinstance(result, torch.Tensor) and result.dim() == 0:
+                        # True scalar result (e.g. sin(3)) — wrap as plain const.
+                        stack.append(ExprBuilder.const(result.item()))
+                    else:
+                        # Tensor field result (e.g. sin(x)) — wrap as const_field.
+                        stack.append(ExprBuilder.const_field(result, in_physical_domain=True))
+                    return
+            stack.append(ExprBuilder.vec_apply_nonlinear(a, func, lower))
             return
 
         if self.ops.is_binary(lower):
@@ -625,9 +660,11 @@ class RPNCompiler:
         d = self.derivative
         stack.append(_Expr(
             eval_fn=lambda state, _a=a, _b=b: self._jacobian(
-                _a.eval_fn(state), _b.eval_fn(state)
+                _a.eval_fn(state), _b.eval_fn(state),
+                a_physical=_a.in_physical_domain,
+                b_physical=_b.in_physical_domain,
             ),
-            depends_on_state=True,
+            depends_on_state=a.depends_on_state or b.depends_on_state,
             const_value=None,
             linear_multiplier=None,
             terms=[
@@ -669,8 +706,28 @@ class RPNCompiler:
             tokens=tokens,
         )
 
-    def _jacobian(self, a_h, b_h) -> torch.Tensor:
+    def _jacobian(self, a_h, b_h, a_physical: bool = False, b_physical: bool = False) -> torch.Tensor:
         d = self.derivative
+
+        # Promote plain scalars to a spectral field of the right shape
+        if not isinstance(a_h, torch.Tensor):
+            a_h = float(a_h) * torch.ones_like(d.laplacian).unsqueeze(0)
+            a_physical = False
+        if not isinstance(b_h, torch.Tensor):
+            b_h = float(b_h) * torch.ones_like(d.laplacian).unsqueeze(0)
+            b_physical = False
+
+        if a_physical:
+            a_h = to_spectral(a_h)
+        if b_physical:
+            b_h = to_spectral(b_h)
+
+        # Ensure batch dim
+        if a_h.dim() == 2:
+            a_h = a_h.unsqueeze(0)
+        if b_h.dim() == 2:
+            b_h = b_h.unsqueeze(0)
+
         a_x = to_physical(d.dx * a_h)
         a_y = to_physical(d.dy * a_h)
         b_x = to_physical(d.dx * b_h)

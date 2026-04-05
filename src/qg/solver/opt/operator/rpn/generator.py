@@ -70,10 +70,10 @@ class RPNGenerator:
         # Default operator distribution if not provided
         if operator_distribution is None:
             operator_distribution = {
-                "+": 0.3, "-": 0.2, "*": 0.25,
-                "sqrt": 0.05, "cos": 0.05, "sin": 0.05,
+                "+": 0.3, "-": 0.2, "*": 0.3, "neg": 0.02,
+                "cos": 0.08, "sin": 0.08,
                 "dx": 0.03, "dy": 0.03, "lap": 0.02,
-                "jacobian": 0.02
+                "jacobian": 0.08
             }
 
         # Normalize distribution
