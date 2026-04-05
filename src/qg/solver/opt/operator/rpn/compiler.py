@@ -156,7 +156,7 @@ class ExprBuilder:
                     av = av.unsqueeze(0)
                 if isinstance(bv, torch.Tensor) and bv.dim() == 2:
                     bv = bv.unsqueeze(0)
-                return av - bv
+                return torch.add(av, bv, alpha=-1) # avoids add_kernel on complex<float>
         else:
             eval_fn = lambda state: a.eval_fn(state) - b.eval_fn(state)
 
@@ -569,10 +569,15 @@ class RPNCompiler:
             neg_one = ExprBuilder.const(-1.0)
             stack.append(_VecExpr(x=ExprBuilder.mul(neg_one, a.x), y=ExprBuilder.mul(neg_one, a.y)))
             return
+
+        def _neg_eval(state, _a=a):
+            val = to_spectral(_a.eval_fn(state)) if _a.in_physical_domain else _a.eval_fn(state)
+            if isinstance(val, torch.Tensor):
+                return torch.mul(val, -1)  # avoids neg_kernel on complex<float>
+            return -val
+
         stack.append(_Expr(
-            eval_fn=lambda state, _a=a: -1.0 * (
-                to_spectral(_a.eval_fn(state)) if _a.in_physical_domain else _a.eval_fn(state)
-            ),
+            eval_fn=_neg_eval,
             depends_on_state=a.depends_on_state,
             const_value=-a.const_value if a.const_value is not None else None,
             linear_multiplier=-a.linear_multiplier if a.linear_multiplier is not None else None,
