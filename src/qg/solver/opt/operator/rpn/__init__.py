@@ -54,7 +54,7 @@ def compile_pde_rpn(rpn, derivative, pde_params):
 
 def batch_rpn_gen(batch_size, max_depth=25, max_nodes=50):
     vocab = create_vocab_from_embeddings()
-    gen = RPNGenerator(vocab, max_depth=2, max_nodes=5)
+    gen = RPNGenerator(vocab, max_depth=max_depth, max_nodes=max_nodes)
     return gen.generate_batch(batch_size)
 
 # Re-export for cleaner API
