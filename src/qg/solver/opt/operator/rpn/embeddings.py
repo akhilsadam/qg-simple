@@ -350,7 +350,7 @@ class RPNTokenEmbedder(nn.Module):
     def __init__(self, embed_dim: int = 32):
         super().__init__()
         self.embed_dim = embed_dim
-        self.token_emb  = TokenEmbedding(embed_dim)
+        self.token_embed = TokenEmbedding(embed_dim)
 
     def forward(
         self,
@@ -358,8 +358,8 @@ class RPNTokenEmbedder(nn.Module):
         amplitude:      torch.Tensor,   # (B, L)  float
     ) -> torch.Tensor:                  # (B, L, E)
 
-        tok_emb = self.token_emb(token_ids)          # (B, L, E)
-        return tok_emb * amplitude[..., None]
+        tok_embed = self.token_embed(token_ids)          # (B, L, E)
+        return tok_embed * amplitude[..., None]
 
 # ---------------------------------------------------------------------------
 # Utility: pretty-print vocabulary
