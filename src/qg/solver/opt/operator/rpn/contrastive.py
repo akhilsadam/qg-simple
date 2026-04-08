@@ -206,7 +206,7 @@ class ContrastiveRPN(nn.Module):
             
             # truncate to what's available TODO check that this is properly padded and only padding is truncated
             # r_token_ids = r_token_ids[:,:self.seq_len,:]
-            if r_token_ids.shape[1] < self.seq_len:
+            if r_token_ids.shape[1] == self.seq_len:
                 
                 z_p = self.head(self.embedder(r_token_ids.to(device), r_amp.to(device)))
                 rule_loss = infonce_symmetric_loss(z_a, z_p, self.temperature)
