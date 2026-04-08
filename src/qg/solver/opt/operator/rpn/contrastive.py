@@ -20,6 +20,7 @@ import torch.nn.functional as F
 from .algebra import AlgebraicRuleSet, create_composite_ruleset
 from .embeddings import (
     TOKEN_TO_ID,
+    ID_TO_TOKEN,
     RPNTokenEmbedder,
     batch_tokenize_rpn,
 )
@@ -113,6 +114,7 @@ class RPN_AE(nn.Module):
         )
         
         self.seq_len = seq_len
+        self.embed_dim = embed_dim
         self.pe_fwd = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))
         self.pe_rev = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))  # Learnable reverse positional encoding
 
@@ -185,9 +187,10 @@ class ContrastiveRPN(nn.Module):
         ### contrastive loss (simple)
         loss = infonce_single_loss(z_a, self.temperature)
         
-        ### denoiser (reconstruction)
+        ### denoiser (reconstruction via conditional flow-matching)
         noise = torch.randn_like(pooled)
-        pooled_noised = pooled*0.1 + noise*0.9
+        t = torch.rand(pooled.shape[0], device=device)[:, None] * 0.5 # less info needed
+        pooled_noised = pooled * t + noise * (1 - t)
         denoise_loss = self.criterion(self.head.reverse(pooled_noised, z_a), pooled)
         loss = loss + denoise_loss
         
@@ -198,8 +201,10 @@ class ContrastiveRPN(nn.Module):
             rule_loss = infonce_symmetric_loss(z_a, z_p, self.temperature)
             loss = loss + rule_loss
             # apply random rewrite to each expression in the batch, encode with same head, compute contrastive loss
+        else:
+            rule_loss = 0.0
         
-        return loss
+        return loss, denoise_loss, rule_loss
 
     def tokenize(self, rpns: Sequence[str]) -> Tuple[torch.Tensor, torch.Tensor]:
         """Tokenize with :func:`batch_tokenize_rpn`."""
@@ -207,6 +212,25 @@ class ContrastiveRPN(nn.Module):
             rpns, max_len = self.seq_len
         )
         return token_ids, amp
+    
+    def detokenize(self, token_ids: torch.Tensor, amp: torch.Tensor) -> List[str]:
+        """Convert token IDs back to RPN strings."""
+        __scalar__
+        npy_ids = token_ids.cpu().numpy()
+        amps = amp.cpu().numpy()
+        
+        rpns = []
+        for seq_ids, seq_amp in zip(npy_ids, amps):
+            tokens = [ID_TO_TOKEN[token_id] for token_id in seq_ids]
+            rpn = []
+            for token, a in zip(tokens, seq_amp):
+                if token == "__scalar__":
+                    rpn.append(f"{a:.6f}")
+                else:
+                    rpn.append(token)
+            rpns.append(" ".join(rpn))
+    
+        return rpns
     
     def forward(
         self,
@@ -218,4 +242,15 @@ class ContrastiveRPN(nn.Module):
         amp = amp.to(device)
         return self.encode_token_batch(token_ids, amp)
 
-    # TODO add decode method
+    def decode(self, encoded):
+        noisy_pooled = torch.randn((encoded.shape[0], self.seq_len, self.embed_dim), device=encoded.device)
+        decoded = self.head.reverse(noisy_pooled, encoded)
+        decoded_norm = decoded.norm(dim=-1, keepdim=True)
+        decoded_normalized = decoded / (decoded_norm + 1e-8)
+        amp = decoded_norm.squeeze(-1)
+        
+        # find nearest token in embedding space
+        token_embed = self.embedder.token_embed.weight  # (V, E)
+        token_ids = torch.argmin(torch.cdist(decoded_normalized.view(-1, self.embed_dim), F.normalize(token_embed, dim=-1)), dim=-1)
+        token_ids = token_ids.view(decoded.shape[0], decoded.shape[1])  # (B, seq_len)  
+        return token_ids, amp
