@@ -280,6 +280,7 @@ class TokenEmbedding(nn.Module):
         self.layer_norm     = nn.LayerNorm(embed_dim)
 
         self._init_weights()
+        self.register_buffer('ids', torch.arange(VOCAB_SIZE)[None,:])
 
     def _init_weights(self):
         # Use category-aware initialisation: tokens in the same category
@@ -325,6 +326,11 @@ class TokenEmbedding(nn.Module):
         cat_emb = self.category_embed(cat_ids)         # (B, L, E)
         return self.layer_norm(tok_emb + cat_emb)      # (B, L, E)
 
+    def decode(self, embed):
+        token_embed = self.token_embed(self.ids)[0,...]  # (V, E)
+        token_ids = torch.argmin(torch.cdist(embed.view(-1, self.embed_dim), F.normalize(token_embed, dim=-1)), dim=-1)
+        token_ids = token_ids.view(embed.shape[0], embed.shape[1])  # (B, seq_len) 
+        return token_ids
 
 # ---------------------------------------------------------------------------
 # Full RPN token embedder (combines TokenEmbedding + ScalarEmbedding)

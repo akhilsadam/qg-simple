@@ -250,7 +250,5 @@ class ContrastiveRPN(nn.Module):
         amp = decoded_norm.squeeze(-1)
         
         # find nearest token in embedding space
-        token_embed = self.embedder.token_embed.weight  # (V, E)
-        token_ids = torch.argmin(torch.cdist(decoded_normalized.view(-1, self.embed_dim), F.normalize(token_embed, dim=-1)), dim=-1)
-        token_ids = token_ids.view(decoded.shape[0], decoded.shape[1])  # (B, seq_len)  
+        token_ids = self.embedder.token_embed.decode(decoded_normalized) 
         return token_ids, amp
