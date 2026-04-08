@@ -192,8 +192,13 @@ class ContrastiveRPN(nn.Module):
         noise = torch.randn_like(pooled)
         t = torch.rand(pooled.shape[0], device=device)[:, None, None] * 0.5 # less info needed
         pooled_noised = pooled * t + noise * (1 - t)
-        denoise_loss = self.criterion(self.head.reverse(pooled_noised, z_a), pooled)
-        loss = loss + denoise_loss
+        decoded = self.head.reverse(pooled_noised, z_a)
+        denoise_distortion_loss = self.criterion(decoded, pooled)
+        loss = loss + denoise_distortion_loss
+        
+        recoded = self.head(decoded)
+        denoise_perception_loss = self.criterion(recoded, z_a)
+        loss = loss + denoise_perception_loss
         
         ### symmetry-based contrastive loss (algebra)
         if self.rules is not None:
@@ -205,7 +210,7 @@ class ContrastiveRPN(nn.Module):
         else:
             rule_loss = 0.0
         
-        return loss, denoise_loss, rule_loss
+        return loss, denoise_distortion_loss, denoise_perception_loss, rule_loss
 
     def tokenize(self, rpns: Sequence[str]) -> Tuple[torch.Tensor, torch.Tensor]:
         """Tokenize with :func:`batch_tokenize_rpn`."""
