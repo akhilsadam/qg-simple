@@ -115,6 +115,7 @@ class RPN_AE(nn.Module):
         
         self.seq_len = seq_len
         self.embed_dim = embed_dim
+        self.proj_dim = proj_dim
         self.pe_fwd = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))
         self.pe_rev = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))  # Learnable reverse positional encoding
 
@@ -127,7 +128,7 @@ class RPN_AE(nn.Module):
         return self.unproj(
             torch.cat([
                     rep + self.pe_rev[None,...], 
-                    pooled.unsqueeze(1).expand(-1, self.seq_len, -1)
+                    pooled[:,None,:].expand(-1, self.seq_len, self.proj_dim)
                 ], dim=-1)
             ) # B, seq_len, embed_dim
     
