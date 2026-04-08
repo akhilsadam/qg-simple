@@ -149,7 +149,7 @@ class ContrastiveRPN(nn.Module):
 
         self.temperature = temperature
         self.embedder = RPNTokenEmbedder(embed_dim=embed_dim)
-        self.head = RPN_AE(embed_dim, proj_dim)
+        self.head = RPN_AE(seq_len, embed_dim, proj_dim)
         if rules is None:
             self.rules = None
         else:
