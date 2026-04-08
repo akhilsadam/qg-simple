@@ -151,10 +151,10 @@ class ContrastiveRPN(nn.Module):
         self.temperature = temperature
         self.embedder = RPNTokenEmbedder(embed_dim=embed_dim)
         self.head = RPN_AE(seq_len, embed_dim, proj_dim)
-        if rules is None:
-            self.rules = None
-        else:
-            self.rules = create_composite_ruleset(TOKEN_TO_ID, pad_token_id=TOKEN_TO_ID["__scalar__"])
+        
+        self.use_rules = rules
+        self.rules = create_composite_ruleset(TOKEN_TO_ID, pad_token_id=TOKEN_TO_ID["__scalar__"])
+            
         self.seq_len = seq_len
         
         self.criterion = nn.MSELoss()
@@ -201,11 +201,12 @@ class ContrastiveRPN(nn.Module):
         loss = loss + denoise_perception_loss
         
         ### symmetry-based contrastive loss (algebra)
-        if self.rules is not None:
+        if self.use_rules or not self.training:
             r_token_ids, r_amp = self.rules.random_positive_view(token_ids, amp)
             z_p = self.head(self.embedder(r_token_ids.to(device), r_amp.to(device)))
             rule_loss = infonce_symmetric_loss(z_a, z_p, self.temperature)
-            loss = loss + rule_loss
+            if self.use_rules:
+                loss = loss + rule_loss
             # apply random rewrite to each expression in the batch, encode with same head, compute contrastive loss
         else:
             rule_loss = 0.0
