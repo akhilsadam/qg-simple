@@ -122,7 +122,7 @@ class RPN_AE(nn.Module):
     def forward(self, rep: torch.Tensor) -> torch.Tensor:
         return self.proj(
             rep + self.pe_fwd[None,...]
-            ).mean(dim=-1) # B, proj_dim
+            ).mean(dim=1) # B, proj_dim
     
     def reverse(self, rep, pooled):
         return self.unproj(
