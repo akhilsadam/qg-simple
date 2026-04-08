@@ -178,7 +178,7 @@ class ContrastiveRPN(nn.Module):
         
         ### basic tokenization
         token_ids, amp = self.tokenize(rpns)
-        device = self.embedder.token_embed.weight.device
+        device = self.head.pe_fwd.device
         
         ### encode original batch
         pooled = self.embedder(token_ids.to(device), amp.to(device))
