@@ -189,7 +189,7 @@ class ContrastiveRPN(nn.Module):
         
         ### denoiser (reconstruction via conditional flow-matching)
         noise = torch.randn_like(pooled)
-        t = torch.rand(pooled.shape[0], device=device)[:, :, None] * 0.5 # less info needed
+        t = torch.rand(pooled.shape[0], device=device)[:, None, None] * 0.5 # less info needed
         pooled_noised = pooled * t + noise * (1 - t)
         denoise_loss = self.criterion(self.head.reverse(pooled_noised, z_a), pooled)
         loss = loss + denoise_loss
