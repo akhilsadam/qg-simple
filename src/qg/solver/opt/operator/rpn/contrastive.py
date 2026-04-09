@@ -156,7 +156,7 @@ class ContrastiveRPN(nn.Module):
         self.rules = create_composite_ruleset(TOKEN_TO_ID, pad_token_id=TOKEN_TO_ID["__scalar__"])
             
         self.seq_len = seq_len
-        
+        self.embed_dim = embed_dim
         self.criterion = nn.MSELoss()
         
     def encode_token_batch(
