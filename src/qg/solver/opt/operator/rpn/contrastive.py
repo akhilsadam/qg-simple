@@ -230,8 +230,8 @@ class ContrastiveRPN(nn.Module):
     def detokenize(self, token_ids: torch.Tensor, amp: torch.Tensor) -> List[str]:
         """Convert token IDs back to RPN strings."""
         # __scalar__
-        npy_ids = token_ids.cpu().numpy()
-        amps = amp.cpu().numpy()
+        npy_ids = token_ids.detach().cpu().numpy()
+        amps = amp.detach().cpu().numpy()
         
         rpns = []
         for seq_ids, seq_amp in zip(npy_ids, amps):
