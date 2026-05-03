@@ -280,6 +280,7 @@ class ContrastiveRPN(nn.Module):
         w = 0.97  # Weight for real tokens
         mask = (~key_padding_mask).float() * w + key_padding_mask.float() * (1 - w)
         mask = mask[:, :, None].to(pred.device)
+        print(mask.shape, pred.shape, target.shape)
         return self.criterion(pred * mask, target * mask)
 
     def encode_token_batch(
@@ -307,7 +308,7 @@ class ContrastiveRPN(nn.Module):
         amp = amp.to(device)
         
         ### compute padding mask for attention (True = mask out padding)
-        key_padding_mask = (token_ids == TOKEN_TO_ID["__pad__"])[:, None, :]
+        key_padding_mask = (token_ids == TOKEN_TO_ID["__pad__"])
         
         ### encode original batch
         x = self.embedder(token_ids, amp)
