@@ -178,27 +178,37 @@ class RPN_AE(nn.Module):
         super().__init__()
         self.embedder = embedder
         
+        # self.proj = nn.Sequential(
+        #     SelfAttention(embed_dim, num_heads=num_heads),
+        #     LinearLayer(embed_dim),
+        #     SelfAttention(embed_dim, num_heads=num_heads),
+        #     LinearLayer(embed_dim),
+        #     SelfAttention(embed_dim, num_heads=num_heads),
+        #     LinearLayer(embed_dim),
+        #     SelfAttention(embed_dim, num_heads=num_heads),
+        #     LinearLayer(embed_dim),
+        #     nn.Linear(embed_dim, proj_dim),
+        # )
+        
         self.proj = nn.Sequential(
-            SelfAttention(embed_dim, num_heads=num_heads),
-            LinearLayer(embed_dim),
-            SelfAttention(embed_dim, num_heads=num_heads),
-            LinearLayer(embed_dim),
-            SelfAttention(embed_dim, num_heads=num_heads),
-            LinearLayer(embed_dim),
-            SelfAttention(embed_dim, num_heads=num_heads),
-            LinearLayer(embed_dim),
-            nn.Linear(embed_dim, proj_dim),
+            nn.Flatten(-2,-1),
+            nn.Linear(seq_len * embed_dim, proj_dim),
         )
         
         self.unproj = nn.Sequential(
-            SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
-            LinearLayer(proj_dim + embed_dim),
-            SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
-            LinearLayer(proj_dim + embed_dim),
-            SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
-            LinearLayer(proj_dim + embed_dim),
-            nn.Linear(proj_dim + embed_dim, embed_dim),
-        )
+            nn.Linear(proj_dim + embed_dim, seq_len * embed_dim),
+            nn.Unflatten(-1, (seq_len, embed_dim)),
+        )      
+        
+        # self.unproj = nn.Sequential(
+        #     SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
+        #     LinearLayer(proj_dim + embed_dim),
+        #     SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
+        #     LinearLayer(proj_dim + embed_dim),
+        #     SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
+        #     LinearLayer(proj_dim + embed_dim),
+        #     nn.Linear(proj_dim + embed_dim, embed_dim),
+        # )
         
         self.seq_len = seq_len
         self.embed_dim = embed_dim
