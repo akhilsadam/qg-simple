@@ -290,11 +290,8 @@ class ContrastiveRPN(nn.Module):
             rule_loss = 0.0
         
         ### GRPO-style syntax reward: sample multiple rollouts and encourage valid ones
-        if self.training:
-            syntax_loss = self._grpo_syntax_loss(z_a, pooled, device)
-            loss = loss + syntax_loss
-        else:
-            syntax_loss = 0.0
+        syntax_loss = self._grpo_syntax_loss(z_a, pooled, device)
+        loss = loss + syntax_loss
         
         return loss, denoise_distortion_loss, denoise_perception_loss, syntax_loss, rule_loss
     
