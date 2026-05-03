@@ -330,10 +330,31 @@ class TokenEmbedding(nn.Module):
         return self._norm(tok_emb + cat_emb)           # (B, L, E)
 
     def decode(self, embed):
-        token_embed = self.token_embed(self.ids)[0,...]  # (V, E)
-        token_ids = torch.argmin(torch.cdist(embed.view(-1, self.embed_dim), F.normalize(token_embed, dim=-1)), dim=-1)
-        token_ids = token_ids.view(embed.shape[0], embed.shape[1])  # (B, seq_len) 
-        return token_ids
+        """
+        Find nearest token IDs for a batch of embeddings.
+        Matches the exact normalization and category bias logic of forward().
+        """
+        # 1. Generate the full reference vocabulary embeddings
+        with torch.no_grad():
+            vocab_ids = self.ids[0]  # (V,)
+            
+            # Reuse forward logic to get actual embeddings used in training
+            if not hasattr(self, "_id_to_cat") or self._id_to_cat.device != vocab_ids.device:
+                self._id_to_cat = self._build_id_to_cat_buffer(vocab_ids.device)
+
+            cat_ids = self._id_to_cat[vocab_ids]
+            tok_emb = self.token_embed(vocab_ids)
+            cat_emb = self.category_embed(cat_ids)
+            reference_embeds = self._norm(tok_emb + cat_emb)  # (V, E)
+
+        # 2. Compute distances to reference embeddings
+        B, L, E = embed.shape
+        # Input 'embed' is already normalized in ContrastiveRPN._decode_tokens
+        # Use cdist for batch-efficient distance calculation
+        dists = torch.cdist(embed.view(-1, E), reference_embeds)  # (B*L, V)
+        
+        token_ids = torch.argmin(dists, dim=-1)
+        return token_ids.view(B, L)
 
 # ---------------------------------------------------------------------------
 # Full RPN token embedder (combines TokenEmbedding + ScalarEmbedding)
