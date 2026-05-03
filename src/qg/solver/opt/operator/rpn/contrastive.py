@@ -208,6 +208,8 @@ class ContrastiveRPN(nn.Module):
     End-to-end: RPN strings → pooled embedding → projection → InfoNCE vs
     algebra-augmented positives.
     """
+    # TODO fix naming so pooled actually represents the pooled embedding not
+    # the sequence embedding
 
     def __init__(
         self,
@@ -230,6 +232,12 @@ class ContrastiveRPN(nn.Module):
         self.embed_dim = embed_dim
         self.criterion = nn.MSELoss()
         
+    def masked_criterion(self, pred: torch.Tensor, target: torch.Tensor, ids: torch.Tensor) -> torch.Tensor:
+        # Apply the padding mask to the loss
+        w = 0.99 # mostly not padding!
+        mask = (ids == TOKEN_TO_ID["__pad__"]) * w + (1-w)
+        return self.criterion(pred*mask, target*mask)
+
     def encode_token_batch(
         self,
         token_ids: torch.Tensor,
@@ -264,7 +272,7 @@ class ContrastiveRPN(nn.Module):
         t = torch.rand(pooled.shape[0], device=device)[:, None, None] * 0.2 # less info needed
         pooled_noised = pooled * t + noise * (1 - t)
         decoded = self.head.reverse(pooled_noised, z_a)
-        denoise_distortion_loss = self.criterion(decoded, pooled)
+        denoise_distortion_loss = self.masked_criterion(decoded, pooled, token_ids)
         loss = loss + denoise_distortion_loss
         
         recoded = self.head(decoded)
