@@ -193,7 +193,7 @@ class RPN_AE(nn.Module):
     def forward(self, rep: torch.Tensor) -> torch.Tensor:
         return self.proj(
             rep + self.pe_fwd[None,...]
-            ).mean(dim=1) # B, proj_dim
+            ).sum(dim=1) # B, proj_dim
     
     def reverse(self, rep, pooled):
         return self.unproj(
@@ -259,9 +259,9 @@ class ContrastiveRPN(nn.Module):
         ### contrastive loss (simple)
         loss = infonce_single_loss(z_a, self.temperature)
         
-        ### denoiser (reconstruction via conditional flow-matching)
+        ### denoiser (reconstruction via one-step conditional flow-matching)
         noise = torch.randn_like(pooled)
-        t = torch.rand(pooled.shape[0], device=device)[:, None, None] * 0.5 # less info needed
+        t = torch.rand(pooled.shape[0], device=device)[:, None, None] * 0.2 # less info needed
         pooled_noised = pooled * t + noise * (1 - t)
         decoded = self.head.reverse(pooled_noised, z_a)
         denoise_distortion_loss = self.criterion(decoded, pooled)
@@ -396,7 +396,7 @@ class ContrastiveRPN(nn.Module):
                     break
                 
                 # If scalar, use the amplitude value
-                if token == "__scalar__":
+                if token == "__scalar__" and abs(float(a)) > 1e-8:
                     rpn.append(f"{float(a):.6f}")
                 else:
                     rpn.append(token)
