@@ -307,7 +307,7 @@ class ContrastiveRPN(nn.Module):
         amp = amp.to(device)
         
         ### compute padding mask for attention (True = mask out padding)
-        key_padding_mask = (token_ids == TOKEN_TO_ID["__pad__"])
+        key_padding_mask = (token_ids == TOKEN_TO_ID["__pad__"])[:, None, :]
         
         ### encode original batch
         x = self.embedder(token_ids, amp)
