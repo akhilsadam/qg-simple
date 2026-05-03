@@ -156,11 +156,29 @@ class SelfAttention(nn.Module):
         self.mha = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
         self.linear = nn.Linear(embed_dim, embed_dim)
         
-    def forward(self, x):
+    def forward(self, x, key_padding_mask=None):
         # MHA expects (Batch, Seq, Feature) if batch_first=True
-        attn_output, _ = self.mha(x, x, x)
+        # key_padding_mask: (B, L) bool — True = mask out (padding), False = keep (real token)
+        # Convert to attn_mask: (B, L, L) bool — True = prevent attention to this position
+        attn_mask = None
+        if key_padding_mask is not None:
+            B, L = key_padding_mask.shape
+            # Expand mask to (B, L, L): prevent attending to padded positions
+            attn_mask = key_padding_mask.unsqueeze(1).expand(B, L, L)  # (B, 1, L) -> (B, L, L)
+        
+        attn_output, _ = self.mha(x, x, x, attn_mask=attn_mask)
         return self.linear(attn_output) + x  # Residual connection
 
+class LinearLayer(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.linear = nn.Sequential(
+            nn.Linear(dim, dim),
+            nn.SiLU()
+        )
+
+    def forward(self, x):
+        return self.linear(x) + x
 
 class RPN_AE(nn.Module):
     """Pool sequence embeddings and project to contrastive space."""
@@ -169,27 +187,24 @@ class RPN_AE(nn.Module):
         super().__init__()
         self.proj = nn.Sequential(
             SelfAttention(embed_dim, num_heads=num_heads),
-            nn.SiLU(),
+            LinearLayer(embed_dim),
             SelfAttention(embed_dim, num_heads=num_heads),
-            nn.SiLU(),
+            LinearLayer(embed_dim),
             SelfAttention(embed_dim, num_heads=num_heads),
-            nn.SiLU(),
+            LinearLayer(embed_dim),
             SelfAttention(embed_dim, num_heads=num_heads),
-            nn.SiLU(),
+            LinearLayer(embed_dim),
             nn.Linear(embed_dim, proj_dim),
         )
         
         self.unproj = nn.Sequential(
             SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
-            nn.SiLU(),
+            LinearLayer(proj_dim + embed_dim),
             SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
-            nn.SiLU(),
+            LinearLayer(proj_dim + embed_dim),
             SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
-            nn.SiLU(),
+            LinearLayer(proj_dim + embed_dim),
             nn.Linear(proj_dim + embed_dim, embed_dim),
-            nn.SiLU(),
-            SelfAttention(embed_dim, num_heads=num_heads),
-            nn.Linear(embed_dim, embed_dim)
         )
         
         self.seq_len = seq_len
@@ -198,18 +213,36 @@ class RPN_AE(nn.Module):
         self.pe_fwd = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))
         self.pe_rev = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))  # Learnable reverse positional encoding
 
-    def forward(self, rep: torch.Tensor) -> torch.Tensor:
-        return self.proj(
-            rep + self.pe_fwd[None,...]
-            ).sum(dim=1) # B, proj_dim
+    def forward(self, rep: torch.Tensor, key_padding_mask=None) -> torch.Tensor:
+        x = rep + self.pe_fwd[None,...]
+        
+        # Apply attention layers with mask
+        for i, module in enumerate(self.proj):
+            if isinstance(module, SelfAttention):
+                x = module(x, key_padding_mask=key_padding_mask)
+            else:
+                x = module(x)
+        
+        return x.sum(dim=1)  # B, proj_dim
     
-    def reverse(self, rep, pooled):
-        return self.unproj(
-            torch.cat([
-                    rep + self.pe_rev[None,...], 
-                    pooled[:,None,:].expand(-1, self.seq_len, self.proj_dim)
-                ], dim=-1)
-            ) # B, seq_len, embed_dim
+    def reverse(self, rep, pooled, key_padding_mask=None):
+        x = torch.cat([
+            rep + self.pe_rev[None,...], 
+            pooled[:,None,:].expand(-1, self.seq_len, self.proj_dim)
+        ], dim=-1)
+        
+        # Apply attention layers with mask
+        for module in self.unproj:
+            if isinstance(module, SelfAttention):
+                x = module(x, key_padding_mask=key_padding_mask)
+            else:
+                x = module(x)
+        
+        # Zero out padding positions explicitly
+        if key_padding_mask is not None:
+            x = x * (~key_padding_mask).unsqueeze(-1).float()
+        
+        return x  # B, seq_len, embed_dim
     
 class ContrastiveRPN(nn.Module):
     """
@@ -240,12 +273,13 @@ class ContrastiveRPN(nn.Module):
         self.embed_dim = embed_dim
         self.criterion = nn.MSELoss()
         
-    def masked_criterion(self, pred: torch.Tensor, target: torch.Tensor, ids: torch.Tensor) -> torch.Tensor:
+    def masked_criterion(self, pred: torch.Tensor, target: torch.Tensor, key_padding_mask: torch.Tensor) -> torch.Tensor:
         # Apply the padding mask to the loss
-        w = 0.97 # mostly not padding!
-        mask = (ids != TOKEN_TO_ID["__pad__"]) * w + (1-w)
+        # key_padding_mask: True = padding, False = real token
+        w = 0.97  # Weight for real tokens
+        mask = (~key_padding_mask).float() * w + key_padding_mask.float() * (1 - w)
         mask = mask[:, :, None].to(pred.device)
-        return self.criterion(pred*mask, target*mask)
+        return self.criterion(pred * mask, target * mask)
 
     def encode_token_batch(
         self,
@@ -258,7 +292,8 @@ class ContrastiveRPN(nn.Module):
         pad_mask : (B, L) bool — True for non-padding positions (inverse of padding column).
         """
         pooled = self.embedder(token_ids, amp)
-        return self.head(pooled)
+        key_padding_mask = (token_ids == TOKEN_TO_ID["__pad__"])
+        return self.head(pooled, key_padding_mask=key_padding_mask)
 
     def loss(
         self,
@@ -268,23 +303,28 @@ class ContrastiveRPN(nn.Module):
         ### basic tokenization
         token_ids, amp = self.tokenize(rpns)
         device = self.head.pe_fwd.device
+        token_ids = token_ids.to(device)
+        amp = amp.to(device)
+        
+        ### compute padding mask for attention (True = mask out padding)
+        key_padding_mask = (token_ids == TOKEN_TO_ID["__pad__"])
         
         ### encode original batch
-        pooled = self.embedder(token_ids.to(device), amp.to(device))
-        z_a = self.head(pooled)
+        pooled = self.embedder(token_ids, amp)
+        z_a = self.head(pooled, key_padding_mask=key_padding_mask)
         
         ### contrastive loss (simple)
         loss = infonce_single_loss(z_a, self.temperature)
         
         ### denoiser (reconstruction via one-step conditional flow-matching)
         noise = torch.randn_like(pooled)
-        t = torch.rand(pooled.shape[0], device=device)[:, None, None] * 0.2 # less info needed
+        t = torch.rand(pooled.shape[0], device=device)[:, None, None] * 0.5 # less info needed
         pooled_noised = pooled * t + noise * (1 - t)
-        decoded = self.head.reverse(pooled_noised, z_a)
-        denoise_distortion_loss = self.masked_criterion(decoded, pooled, token_ids)
+        decoded = self.head.reverse(pooled_noised, z_a, key_padding_mask=key_padding_mask)
+        denoise_distortion_loss = self.masked_criterion(decoded, pooled, key_padding_mask)
         loss = loss + denoise_distortion_loss
         
-        recoded = self.head(decoded)
+        recoded = self.head(decoded, key_padding_mask=key_padding_mask)
         denoise_perception_loss = self.criterion(recoded, z_a)
         loss = loss + denoise_perception_loss
         
@@ -295,8 +335,10 @@ class ContrastiveRPN(nn.Module):
             # truncate to what's available TODO check that this is properly padded and only padding is truncated
             # r_token_ids = r_token_ids[:,:self.seq_len,:]
             if r_token_ids.shape[1] == self.seq_len:
-                
-                z_p = self.head(self.embedder(r_token_ids.to(device), r_amp.to(device)))
+                r_token_ids = r_token_ids.to(device)
+                r_amp = r_amp.to(device)
+                r_key_padding_mask = (r_token_ids == TOKEN_TO_ID["__pad__"])
+                z_p = self.head(self.embedder(r_token_ids, r_amp), key_padding_mask=r_key_padding_mask)
                 rule_loss = infonce_symmetric_loss(z_a, z_p, self.temperature)
                 if self.use_rules:
                     loss = loss + rule_loss
@@ -307,7 +349,7 @@ class ContrastiveRPN(nn.Module):
             rule_loss = 0.0
         
         ### GRPO-style syntax reward: sample multiple rollouts and encourage valid ones
-        syntax_loss = self._grpo_syntax_loss(z_a, pooled, device)
+        syntax_loss = self._grpo_syntax_loss(z_a, pooled, key_padding_mask, device)
         loss = loss + syntax_loss
         
         return loss, denoise_distortion_loss, denoise_perception_loss, syntax_loss, rule_loss
@@ -316,8 +358,9 @@ class ContrastiveRPN(nn.Module):
         self,
         z_a: torch.Tensor,
         pooled: torch.Tensor,
+        key_padding_mask: torch.Tensor,
         device: torch.device,
-        num_samples: int = 3,
+        num_samples: int = 32,
     ) -> torch.Tensor:
         """
         GRPO-style loss: sample multiple decoded rollouts, compute syntax validity,
@@ -343,7 +386,7 @@ class ContrastiveRPN(nn.Module):
         for _ in range(num_samples):
             # Sample noisy input and decode
             noise = torch.randn_like(pooled)
-            decoded = self.head.reverse(noise, z_a)
+            decoded = self.head.reverse(noise, z_a, key_padding_mask=key_padding_mask)
             
             # Get token predictions
             token_ids_sample, _ = self._decode_tokens(decoded)
