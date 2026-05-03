@@ -329,9 +329,7 @@ class ContrastiveRPN(nn.Module):
             decoded = self.head.reverse(noise, z_a)
             
             # Get token predictions
-            decoded_norm = decoded.norm(dim=-1, keepdim=True)
-            decoded_normalized = decoded / (decoded_norm + 1e-8)
-            token_ids_sample, _ = self._decode_tokens(decoded_normalized)
+            token_ids_sample, _ = self._decode_tokens(decoded)
             
             # Validate syntax
             validity = validate_rpn_syntax(token_ids_sample)
@@ -359,11 +357,13 @@ class ContrastiveRPN(nn.Module):
         
         return syntax_loss
     
-    def _decode_tokens(self, decoded_normalized: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _decode_tokens(self, decoded: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Helper to decode embeddings to token IDs. Returns token_ids, amplitudes."""
+        amp = decoded.norm(dim=-1, keepdim=True)
+        decoded_normalized = decoded / (amp + 1e-8)
         token_ids = self.embedder.token_embed.decode(decoded_normalized)
-        amp = decoded_normalized.norm(dim=-1)
-        return token_ids, amp
+
+        return token_ids, amp.squeeze(-1)
 
     def tokenize(self, rpns: Sequence[str]) -> Tuple[torch.Tensor, torch.Tensor]:
         """Tokenize with :func:`batch_tokenize_rpn`."""
@@ -374,21 +374,35 @@ class ContrastiveRPN(nn.Module):
     
     def detokenize(self, token_ids: torch.Tensor, amp: torch.Tensor) -> List[str]:
         """Convert token IDs back to RPN strings."""
-        # __scalar__
         npy_ids = token_ids.detach().cpu().numpy()
         amps = amp.detach().cpu().numpy()
         
         rpns = []
         for seq_ids, seq_amp in zip(npy_ids, amps):
-            tokens = [ID_TO_TOKEN[token_id] for token_id in seq_ids]
             rpn = []
-            for token, a in zip(tokens, seq_amp):
+            for token_id, a in zip(seq_ids, seq_amp):
+                # Convert numpy int to Python int for safe dictionary lookup
+                token_id_int = int(token_id)
+                
+                # Bounds check: skip if token_id is out of range
+                if token_id_int < 0 or token_id_int >= len(ID_TO_TOKEN):
+                    print(f"Warning: token_id {token_id_int} out of range [0, {len(ID_TO_TOKEN)})")
+                    continue
+                
+                token = ID_TO_TOKEN.get(token_id_int, "__unknown__")
+                
+                # Stop at padding
+                if token == "__pad__":
+                    break
+                
+                # If scalar, use the amplitude value
                 if token == "__scalar__":
-                    rpn.append(f"{a:.6f}")
+                    rpn.append(f"{float(a):.6f}")
                 else:
                     rpn.append(token)
+            
             rpns.append(" ".join(rpn))
-    
+        
         return rpns
     
     def forward(
@@ -404,10 +418,4 @@ class ContrastiveRPN(nn.Module):
     def decode(self, encoded):
         noisy_pooled = torch.randn((encoded.shape[0], self.seq_len, self.embed_dim), device=encoded.device)
         decoded = self.head.reverse(noisy_pooled, encoded)
-        decoded_norm = decoded.norm(dim=-1, keepdim=True)
-        decoded_normalized = decoded / (decoded_norm + 1e-8)
-        amp = decoded_norm.squeeze(-1)
-        
-        # find nearest token in embedding space
-        token_ids = self.embedder.token_embed.decode(decoded_normalized) 
-        return token_ids, amp
+        return self._decode_tokens(decoded)
