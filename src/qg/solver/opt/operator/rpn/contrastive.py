@@ -172,10 +172,18 @@ class RPN_AE(nn.Module):
             nn.SiLU(),
             SelfAttention(embed_dim, num_heads=num_heads),
             nn.SiLU(),
+            SelfAttention(embed_dim, num_heads=num_heads),
+            nn.SiLU(),
+            SelfAttention(embed_dim, num_heads=num_heads),
+            nn.SiLU(),
             nn.Linear(embed_dim, proj_dim),
         )
         
         self.unproj = nn.Sequential(
+            SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
+            nn.SiLU(),
+            SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
+            nn.SiLU(),
             SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
             nn.SiLU(),
             nn.Linear(proj_dim + embed_dim, embed_dim),
