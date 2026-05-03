@@ -155,18 +155,14 @@ class SelfAttention(nn.Module):
         super().__init__()
         self.mha = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
         self.linear = nn.Linear(embed_dim, embed_dim)
-        self.num_heads = num_heads
+        
     def forward(self, x, key_padding_mask=None):
         # MHA expects (Batch, Seq, Feature) if batch_first=True
-        # key_padding_mask: (B, L) bool — True = mask out (padding), False = keep (real token)
-        # Convert to attn_mask: (B, L, L) bool — True = prevent attention to this position
-        attn_mask = None
         if key_padding_mask is not None:
-            B, L = key_padding_mask.shape
-            # Expand mask to (B, L, L): prevent attending to padded positions
-            attn_mask = key_padding_mask.unsqueeze(1).unsqueeze(1).expand(B, self.num_heads, L, L)  # (B, 1, L) -> (B, L, L)
-        
-        attn_output, _ = self.mha(x, x, x, attn_mask=attn_mask)
+            # WIPE out the padding tokens by setting their values to zero
+            x = x * (~key_padding_mask).unsqueeze(-1).float()
+            
+        attn_output, _ = self.mha(x, x, x)
         return self.linear(attn_output) + x  # Residual connection
 
 class LinearLayer(nn.Module):
