@@ -227,6 +227,8 @@ class RPN_AE(nn.Module):
             pooled[:,None,:].expand(-1, self.seq_len, self.proj_dim)
         ], dim=-1)
         
+        x = self.unproj(x)
+        
         zero = self.zero()
         x = x + zero
         
