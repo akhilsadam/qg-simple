@@ -196,7 +196,8 @@ class RPN_AE(nn.Module):
         )
         
         self.unproj = nn.Sequential(
-            nn.Linear(proj_dim + embed_dim, seq_len * embed_dim),
+            nn.Flatten(-2,-1),
+            nn.Linear(seq_len*(proj_dim + embed_dim), seq_len * embed_dim),
             nn.Unflatten(-1, (seq_len, embed_dim)),
         )      
         
@@ -280,7 +281,6 @@ class ContrastiveRPN(nn.Module):
         w = 0.97  # Weight for real tokens
         mask = (~key_padding_mask).float() * w + key_padding_mask.float() * (1 - w)
         mask = mask[:, :, None].to(pred.device)
-        print(mask.shape, pred.shape, target.shape)
         return self.criterion(pred * mask, target * mask)
 
     def encode_token_batch(
