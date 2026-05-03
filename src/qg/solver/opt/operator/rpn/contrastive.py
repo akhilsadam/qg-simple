@@ -136,9 +136,9 @@ def validate_rpn_syntax(token_ids: torch.Tensor) -> torch.Tensor:
                     valid = False
                     break
                 stack_depth -= 1  # pop 2, push 1
-            # Padding: stop processing
+            # Padding: SKIP
             elif token == "__pad__":
-                break
+                continue
             else:
                 # Unknown token
                 valid = False
@@ -224,7 +224,7 @@ class ContrastiveRPN(nn.Module):
         self.head = RPN_AE(seq_len, embed_dim, proj_dim)
         
         self.use_rules = rules
-        self.rules = create_composite_ruleset(TOKEN_TO_ID, pad_token_id=TOKEN_TO_ID["__scalar__"])
+        self.rules = create_composite_ruleset(TOKEN_TO_ID, pad_token_id=TOKEN_TO_ID["__pad__"])
             
         self.seq_len = seq_len
         self.embed_dim = embed_dim

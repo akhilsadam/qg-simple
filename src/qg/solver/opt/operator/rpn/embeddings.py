@@ -63,6 +63,7 @@ class TokenCategory(IntEnum):
     JACOBIAN        = auto()
     MISC_OP         = auto()
     SCALAR_CONST    = auto()   # numeric literals + named params
+    PADDING         = auto()
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +119,8 @@ _VOCAB_DEF: List[Tuple[str, TokenCategory]] = [
 
     # --- scalar placeholder (numeric literals and named params) ---
     ("__scalar__", TokenCategory.SCALAR_CONST),
+    ("__pad__", TokenCategory.PADDING),
+    
 ]
 
 # Build forward and reverse maps once at import time.
@@ -243,7 +246,7 @@ def batch_tokenize_rpn(
     token_ids = torch.zeros((B, max_len), dtype=torch.long)
     amplitude = torch.zeros((B, max_len), dtype=torch.float)
     
-    pad_id = TOKEN_TO_ID["__scalar__"]
+    pad_id = TOKEN_TO_ID["__pad__"]
     token_ids.fill_(pad_id)
 
     for i, rpn in enumerate(rpns):
@@ -277,7 +280,7 @@ class TokenEmbedding(nn.Module):
 
         self.token_embed    = nn.Embedding(VOCAB_SIZE,   embed_dim)
         self.category_embed = nn.Embedding(N_CATEGORIES, embed_dim)
-        self.layer_norm     = nn.LayerNorm(embed_dim)
+        self._norm     = lambda x:F.normalize(x, dim=-1)
 
         self._init_weights()
         self.register_buffer('ids', torch.arange(VOCAB_SIZE)[None,:])
@@ -315,7 +318,7 @@ class TokenEmbedding(nn.Module):
 
         Returns
         -------
-        (B, L, embed_dim) float tensor, layer-normed
+        (B, L, embed_dim) float tensor, normed
         """
         # Build or reuse the vocab→category mapping buffer (avoids Python loop).
         if not hasattr(self, "_id_to_cat") or self._id_to_cat.device != token_ids.device:
@@ -324,7 +327,7 @@ class TokenEmbedding(nn.Module):
         cat_ids = self._id_to_cat[token_ids]           # (B, L)
         tok_emb = self.token_embed(token_ids)          # (B, L, E)
         cat_emb = self.category_embed(cat_ids)         # (B, L, E)
-        return self.layer_norm(tok_emb + cat_emb)      # (B, L, E)
+        return self._norm(tok_emb + cat_emb)           # (B, L, E)
 
     def decode(self, embed):
         token_embed = self.token_embed(self.ids)[0,...]  # (V, E)
