@@ -209,8 +209,8 @@ class RPN_AE(nn.Module):
         self.pad_token_id = TOKEN_TO_ID["__pad__"]
         
     def zero(self):
-        id_ = self.pad_token_id[None,None] # B, L
-        amp_ = torch.ones_like(id_, dtype=torch.float32)
+        id_ = torch.full((1, 1), self.pad_token_id, dtype=torch.long, device=self.embedder.token_embed.weight.device)
+        amp_ = torch.ones(1, 1, dtype=torch.float32, device=id_.device)
         pad = self.embedder(id_, amp_)
         return pad
 
