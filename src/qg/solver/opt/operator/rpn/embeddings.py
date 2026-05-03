@@ -244,7 +244,7 @@ def batch_tokenize_rpn(
     """
     B = len(rpns)
     token_ids = torch.zeros((B, max_len), dtype=torch.long)
-    amplitude = torch.zeros((B, max_len), dtype=torch.float)
+    amplitude = torch.ones((B, max_len), dtype=torch.float) # ones so that pad stays intact
     
     pad_id = TOKEN_TO_ID["__pad__"]
     token_ids.fill_(pad_id)
@@ -367,7 +367,7 @@ class RPNTokenEmbedder(nn.Module):
     Input
     -----
     token_ids   : (B, L) long     — token IDs (use TOKEN_TO_ID)
-    amplitude   : (B, L) float    — amplitude, 1.0 for non-scalar, 0.0 for pad
+    amplitude   : (B, L) float    — amplitude, 1.0 for non-scalar or pad
 
     Output
     ------

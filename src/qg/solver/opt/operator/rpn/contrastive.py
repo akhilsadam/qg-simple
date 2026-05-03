@@ -389,11 +389,11 @@ class ContrastiveRPN(nn.Module):
                     print(f"Warning: token_id {token_id_int} out of range [0, {len(ID_TO_TOKEN)})")
                     continue
                 
-                token = ID_TO_TOKEN.get(token_id_int, "__unknown__")
+                token = ID_TO_TOKEN.get(token_id_int, "__pad__")
                 
                 # Stop at padding
                 if token == "__pad__":
-                    break
+                    continue
                 
                 # If scalar, use the amplitude value
                 if token == "__scalar__" and abs(float(a)) > 1e-8:
