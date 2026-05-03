@@ -234,8 +234,8 @@ class ContrastiveRPN(nn.Module):
         
     def masked_criterion(self, pred: torch.Tensor, target: torch.Tensor, ids: torch.Tensor) -> torch.Tensor:
         # Apply the padding mask to the loss
-        w = 0.99 # mostly not padding!
-        mask = (ids == TOKEN_TO_ID["__pad__"]) * w + (1-w)
+        w = 0.97 # mostly not padding!
+        mask = (ids != TOKEN_TO_ID["__pad__"]) * w + (1-w)
         mask = mask[:, :, None].to(pred.device)
         return self.criterion(pred*mask, target*mask)
 
