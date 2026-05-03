@@ -236,7 +236,7 @@ class ContrastiveRPN(nn.Module):
         # Apply the padding mask to the loss
         w = 0.99 # mostly not padding!
         mask = (ids == TOKEN_TO_ID["__pad__"]) * w + (1-w)
-        mask = mask[:, :, None]
+        mask = mask[:, :, None].to(pred.device)
         return self.criterion(pred*mask, target*mask)
 
     def encode_token_batch(
