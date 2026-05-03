@@ -229,7 +229,8 @@ class RPN_AE(nn.Module):
         rep = rep - zero
         x = rep + self.pe_fwd[None,...]
         x = self.proj(x)
-        return x.sum(dim=1)  # B, proj_dim
+        return x
+        # return x.sum(dim=1)  # B, proj_dim
     
     def reverse(self, rep, pooled):
         x = torch.cat([
