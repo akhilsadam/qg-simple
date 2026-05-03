@@ -30,12 +30,12 @@ def define_explicit_operator(param, grid, derivative, logger, args, sources, **k
         
     if param.pde.penalty > 0:
         
-        # if param.pde.friction is not None:
-        #     logger.info("Using Brinkman penalty (friction-slip) operator")
-        #     brinkman_penalty = brinkman_friction_slip_penalty
-        # else:
-        logger.info("Using Brinkman penalty (no-slip) operator")
-        brinkman_penalty = brinkman_no_slip_penalty
+        if param.pde.friction is not None:
+            logger.info("Using Brinkman penalty (friction-slip) operator")
+            brinkman_penalty = brinkman_friction_slip_penalty
+        else:
+            logger.info("Using Brinkman penalty (no-slip) operator")
+            brinkman_penalty = brinkman_no_slip_penalty
         
         mask = solve_mask(param.mask, grid, derivative)
         patches.append(lambda op, state: brinkman_penalty(op, state, *mask(op, state)))

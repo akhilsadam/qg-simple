@@ -20,9 +20,11 @@ import torch.nn.functional as F
 from .algebra import AlgebraicRuleSet, create_composite_ruleset
 from .embeddings import (
     TOKEN_TO_ID,
+    TOKEN_TO_CAT,
     ID_TO_TOKEN,
     RPNTokenEmbedder,
     batch_tokenize_rpn,
+    TokenCategory,
 )
 
 
@@ -78,6 +80,75 @@ def infonce_symmetric_loss(
     loss_a = F.cross_entropy(logits_ab, targets)
     loss_b = F.cross_entropy(logits_ba, targets)
     return 0.5 * (loss_a + loss_b)
+
+def validate_rpn_syntax(token_ids: torch.Tensor) -> torch.Tensor:
+    """
+    Validate RPN syntax per sequence via stack-based evaluation.
+    Uses token categories from embeddings.py to determine operator arity.
+    Valid RPN ends with stack_depth = 1 (single value).
+    
+    Stack semantics by category:
+      - SCALAR_CONST, VARIABLE: push value (stack += 1)
+      - NONLINEAR_UNARY, LINEAR_DIFF, VECTOR_OP, JACOBIAN, MISC_OP: unary (pop 1, push 1)
+      - BINARY_OP: binary (pop 2, push 1)
+    
+    Returns
+    -------
+    validity : (B,) binary tensor — 1.0 if valid, 0.0 if invalid
+    """
+    batch_size = token_ids.shape[0]
+    validity = torch.zeros(batch_size, device=token_ids.device, dtype=torch.float32)
+    
+    for b in range(batch_size):
+        stack_depth = 0
+        valid = True
+        
+        for token_id in token_ids[b]:
+            token_id_val = token_id.item()
+            token = ID_TO_TOKEN.get(token_id_val, "__pad__")
+            
+            # Get token category
+            category = TOKEN_TO_CAT.get(token, None)
+            
+            # Scalar constants and variables: push to stack
+            if category in (
+                TokenCategory.SCALAR_CONST,
+                TokenCategory.VARIABLE
+            ):
+                stack_depth += 1
+            # Unary operators: pop 1, push 1 (no net change, but need >= 1)
+            elif category in (
+                TokenCategory.NONLINEAR_UNARY,
+                TokenCategory.LINEAR_DIFF,
+                TokenCategory.VECTOR_OP,
+                TokenCategory.MISC_OP,
+            ):
+                if stack_depth < 1:
+                    valid = False
+                    break
+                # Stack depth unchanged (pop 1, push 1)
+            # Binary operators: pop 2, push 1
+            elif category in (
+                TokenCategory.BINARY_OP,
+                TokenCategory.JACOBIAN,
+            ):
+                if stack_depth < 2:
+                    valid = False
+                    break
+                stack_depth -= 1  # pop 2, push 1
+            # Padding: stop processing
+            elif token == "__pad__":
+                break
+            else:
+                # Unknown token
+                valid = False
+                break
+        
+        # Valid if syntax check passed and final stack has exactly 1 element
+        if valid and stack_depth == 1:
+            validity[b] = 1.0
+    
+    return validity
 
 class SelfAttention(nn.Module):
     def __init__(self, embed_dim, num_heads, dropout=0.0):
@@ -218,7 +289,82 @@ class ContrastiveRPN(nn.Module):
         else:
             rule_loss = 0.0
         
-        return loss, denoise_distortion_loss, denoise_perception_loss, rule_loss
+        ### GRPO-style syntax reward: sample multiple rollouts and encourage valid ones
+        if self.training:
+            syntax_loss = self._grpo_syntax_loss(z_a, pooled, device)
+            loss = loss + syntax_loss
+        
+        return loss, denoise_distortion_loss, denoise_perception_loss, syntax_loss, rule_loss
+    
+    def _grpo_syntax_loss(
+        self,
+        z_a: torch.Tensor,
+        pooled: torch.Tensor,
+        device: torch.device,
+        num_samples: int = 3,
+    ) -> torch.Tensor:
+        """
+        GRPO-style loss: sample multiple decoded rollouts, compute syntax validity,
+        then use relative advantages to encourage valid RPN generation.
+        
+        Parameters
+        ----------
+        z_a : (B, proj_dim) — encoded embeddings
+        pooled : (B, seq_len, embed_dim) — pooled sequence representation
+        num_samples : int — number of rollout samples per batch element
+        
+        Returns
+        -------
+        syntax_loss : scalar tensor
+        """
+        batch_size = pooled.shape[0]
+        syntax_loss = torch.tensor(0.0, device=device)
+        
+        # Sample multiple decoded sequences
+        validity_scores = []
+        reconstruction_errors = []
+        
+        for _ in range(num_samples):
+            # Sample noisy input and decode
+            noise = torch.randn_like(pooled)
+            decoded = self.head.reverse(noise, z_a)
+            
+            # Get token predictions
+            decoded_norm = decoded.norm(dim=-1, keepdim=True)
+            decoded_normalized = decoded / (decoded_norm + 1e-8)
+            token_ids_sample, _ = self._decode_tokens(decoded_normalized)
+            
+            # Validate syntax
+            validity = validate_rpn_syntax(token_ids_sample)
+            validity_scores.append(validity)
+            
+            # Reconstruction error (lower is better)
+            recon_error = self.criterion(decoded, pooled)
+            reconstruction_errors.append(recon_error)
+        
+        # Stack validity scores: (num_samples, B)
+        validity_scores = torch.stack(validity_scores, dim=0)  # (num_samples, B)
+        reconstruction_errors = torch.stack(reconstruction_errors, dim=0)  # (num_samples,)
+        
+        # Compute relative advantages (GRPO style)
+        # Higher validity → lower loss
+        mean_validity = validity_scores.mean(dim=0, keepdim=True)  # (1, B)
+        validity_advantage = validity_scores - mean_validity  # (num_samples, B)
+        
+        # Weight samples by validity advantage: encourage high-validity samples
+        # and penalize low-validity ones (relative to batch mean)
+        weighted_errors = reconstruction_errors.unsqueeze(-1) * (1.0 - validity_advantage)
+        
+        # Average over samples and batch
+        syntax_loss = weighted_errors.mean()
+        
+        return syntax_loss
+    
+    def _decode_tokens(self, decoded_normalized: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Helper to decode embeddings to token IDs. Returns token_ids, amplitudes."""
+        token_ids = self.embedder.token_embed.decode(decoded_normalized)
+        amp = decoded_normalized.norm(dim=-1)
+        return token_ids, amp
 
     def tokenize(self, rpns: Sequence[str]) -> Tuple[torch.Tensor, torch.Tensor]:
         """Tokenize with :func:`batch_tokenize_rpn`."""
