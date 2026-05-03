@@ -261,7 +261,7 @@ class ContrastiveRPN(nn.Module):
             
         self.seq_len = seq_len
         self.embed_dim = embed_dim
-        self.criterion = nn.MSELoss()
+        self.criterion = lambda x_hat, x: ((x_hat - x).pow(2).mean() / ((x - x.mean(dim=(-1),keepdim=True)).pow(2).mean() + 1e-8))
         
     def masked_criterion(self, pred: torch.Tensor, target: torch.Tensor, key_padding_mask: torch.Tensor) -> torch.Tensor:
         # Apply the padding mask to the loss
@@ -299,18 +299,18 @@ class ContrastiveRPN(nn.Module):
         key_padding_mask = (token_ids == TOKEN_TO_ID["__pad__"])
         
         ### encode original batch
-        pooled = self.embedder(token_ids, amp)
-        z_a = self.head(pooled)
+        x = self.embedder(token_ids, amp)
+        z_a = self.head(x)
         
         ### contrastive loss (simple)
         loss = infonce_single_loss(z_a, self.temperature)
         
         ### denoiser (reconstruction via one-step conditional flow-matching)
-        noise = torch.randn_like(pooled)
-        t = torch.rand(pooled.shape[0], device=device)[:, None, None] * 0.5 # less info needed
-        pooled_noised = pooled * t + noise * (1 - t)
-        decoded = self.head.reverse(pooled_noised, z_a)
-        denoise_distortion_loss = self.masked_criterion(decoded, pooled, key_padding_mask)
+        noise = torch.randn_like(x)
+        t = torch.rand(x.shape[0], device=device)[:, None, None] * 0.5 # less info needed
+        x_noised = x * t + noise * (1 - t)
+        decoded = self.head.reverse(x_noised, z_a)
+        denoise_distortion_loss = self.masked_criterion(decoded, x, key_padding_mask)
         loss = loss + denoise_distortion_loss
         
         recoded = self.head(decoded)
@@ -337,7 +337,7 @@ class ContrastiveRPN(nn.Module):
             rule_loss = 0.0
         
         ### GRPO-style syntax reward: sample multiple rollouts and encourage valid ones
-        syntax_loss = self._grpo_syntax_loss(z_a, pooled, device)
+        syntax_loss = self._grpo_syntax_loss(z_a, x, device)
         loss = loss + syntax_loss
         
         return loss, denoise_distortion_loss, denoise_perception_loss, syntax_loss, rule_loss
@@ -347,7 +347,7 @@ class ContrastiveRPN(nn.Module):
         z_a: torch.Tensor,
         pooled: torch.Tensor,
         device: torch.device,
-        num_samples: int = 8,
+        num_samples: int = 3,
     ) -> torch.Tensor:
         """
         GRPO-style loss: sample multiple decoded rollouts, compute syntax validity,
