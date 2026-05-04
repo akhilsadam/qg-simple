@@ -327,8 +327,6 @@ class TokenEmbedding(nn.Module):
                 # at init — the token embed learns fine-grained distinctions.
                 self.token_embed.weight[tid].zero_()
                 
-        self.device = self.token_embed.weight.device
-
     def _build_id_to_cat_buffer(self, device: torch.device) -> torch.Tensor:
         """Precomputed tensor: vocab_id → category_id, shape (VOCAB_SIZE,)."""
         mapping = [int(TOKEN_TO_CAT[ID_TO_TOKEN[i]]) for i in range(VOCAB_SIZE)]
@@ -344,6 +342,8 @@ class TokenEmbedding(nn.Module):
         -------
         (B, L, embed_dim) float tensor, normed
         """
+        self.device = self.token_embed.weight.device
+        
         # Build or reuse the vocab→category mapping buffer (avoids Python loop).
         if not hasattr(self, "_id_to_cat") or self._id_to_cat.device != token_ids.device:
             self._id_to_cat = self._build_id_to_cat_buffer(token_ids.device)
