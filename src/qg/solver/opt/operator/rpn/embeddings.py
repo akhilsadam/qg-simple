@@ -127,6 +127,28 @@ _VOCAB_DEF: List[Tuple[str, TokenCategory]] = [
 TOKEN_TO_ID:  Dict[str, int]           = {name: i for i, (name, _) in enumerate(_VOCAB_DEF)}
 TOKEN_TO_CAT: Dict[str, TokenCategory] = {name: cat for name, cat in _VOCAB_DEF}
 ID_TO_TOKEN:  Dict[int, str]           = {i: name for i, (name, _) in enumerate(_VOCAB_DEF)}
+ID_TO_ARITY = {}
+
+for i, (name, _) in enumerate(_VOCAB_DEF):
+    cat = TOKEN_TO_CAT[ID_TO_TOKEN[i]]
+    match cat:
+        case TokenCategory.VARIABLE | \
+            TokenCategory.SCALAR_CONST:
+            arity = 0
+        case TokenCategory.LINEAR_DIFF | \
+            TokenCategory.NONLINEAR_UNARY | \
+            TokenCategory.VECTOR_OP | \
+            TokenCategory.MISC_OP:
+            arity = 1
+        case TokenCategory.BINARY_OP | \
+            TokenCategory.JACOBIAN :
+            arity = 2
+        case TokenCategory.PADDING:
+            arity = -1
+        case _:
+            arity = 0
+    ID_TO_ARITY[i] = arity
+
 
 VOCAB_SIZE     = len(_VOCAB_DEF)
 N_CATEGORIES   = len(TokenCategory)

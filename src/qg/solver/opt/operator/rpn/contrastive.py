@@ -22,11 +22,21 @@ from .embeddings import (
     TOKEN_TO_ID,
     TOKEN_TO_CAT,
     ID_TO_TOKEN,
+    ID_TO_ARITY,
     RPNTokenEmbedder,
     batch_tokenize_rpn,
     TokenCategory,
 )
 
+
+from .ae.naive_mlp import RPN_AE as RPN_AE_NMLP
+from .ae.att import RPN_AE as RPN_AE_ATT
+
+
+RPN_AE_ = {
+    "nmlp": RPN_AE_NMLP,
+    "att": RPN_AE_ATT,
+}
 
 def masked_mean_pool(
     seq: torch.Tensor,
@@ -149,102 +159,6 @@ def validate_rpn_syntax(token_ids: torch.Tensor) -> torch.Tensor:
             validity[b] = 1.0
     
     return validity
-
-class SelfAttention(nn.Module):
-    def __init__(self, embed_dim, num_heads, dropout=0.0):
-        super().__init__()
-        self.mha = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
-        self.linear = nn.Linear(embed_dim, embed_dim)
-        
-    def forward(self, x):
-        attn_output, _ = self.mha(x, x, x)
-        return self.linear(attn_output) + x  # Residual connection
-
-class LinearLayer(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.linear = nn.Sequential(
-            nn.Linear(dim, dim),
-            nn.SiLU()
-        )
-
-    def forward(self, x):
-        return self.linear(x) + x
-
-class RPN_AE(nn.Module):
-    """Pool sequence embeddings and project to contrastive space."""
-
-    def __init__(self, embedder, seq_len=100, embed_dim: int=32, proj_dim: int=64, num_heads=4):
-        super().__init__()
-        self.embedder = embedder
-        
-        # self.proj = nn.Sequential(
-        #     SelfAttention(embed_dim, num_heads=num_heads),
-        #     LinearLayer(embed_dim),
-        #     SelfAttention(embed_dim, num_heads=num_heads),
-        #     LinearLayer(embed_dim),
-        #     SelfAttention(embed_dim, num_heads=num_heads),
-        #     LinearLayer(embed_dim),
-        #     SelfAttention(embed_dim, num_heads=num_heads),
-        #     LinearLayer(embed_dim),
-        #     nn.Linear(embed_dim, proj_dim),
-        # )
-        
-        self.proj = nn.Sequential(
-            nn.Flatten(-2,-1),
-            nn.Linear(seq_len * embed_dim, proj_dim),
-        )
-        
-        self.unproj = nn.Sequential(
-            nn.Flatten(-2,-1),
-            nn.Linear(seq_len*(proj_dim + embed_dim), seq_len * embed_dim),
-            nn.Unflatten(-1, (seq_len, embed_dim)),
-        )      
-        
-        # self.unproj = nn.Sequential(
-        #     SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
-        #     LinearLayer(proj_dim + embed_dim),
-        #     SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
-        #     LinearLayer(proj_dim + embed_dim),
-        #     SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
-        #     LinearLayer(proj_dim + embed_dim),
-        #     nn.Linear(proj_dim + embed_dim, embed_dim),
-        # )
-        
-        self.seq_len = seq_len
-        self.embed_dim = embed_dim
-        self.proj_dim = proj_dim
-        self.pe_fwd = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))
-        self.pe_rev = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))  # Learnable reverse positional encoding
-
-        self.pad_token_id = TOKEN_TO_ID["__pad__"]
-        
-    def zero(self):
-        id_ = torch.full((1, 1), self.pad_token_id, dtype=torch.long, device=self.pe_fwd.device)
-        amp_ = torch.ones(1, 1, dtype=torch.float32, device=id_.device)
-        pad = self.embedder(id_, amp_)
-        return pad
-
-    def forward(self, rep: torch.Tensor) -> torch.Tensor:
-        zero = self.zero()
-        rep = rep - zero
-        x = rep + self.pe_fwd[None,...]
-        x = self.proj(x)
-        return x
-        # return x.sum(dim=1)  # B, proj_dim
-    
-    def reverse(self, rep, pooled):
-        x = torch.cat([
-            rep + self.pe_rev[None,...], 
-            pooled[:,None,:].expand(-1, self.seq_len, self.proj_dim)
-        ], dim=-1)
-        
-        x = self.unproj(x)
-        
-        zero = self.zero()
-        x = x + zero
-        
-        return x  # B, seq_len, embed_dim
     
 class ContrastiveRPN(nn.Module):
     """
@@ -261,12 +175,15 @@ class ContrastiveRPN(nn.Module):
         proj_dim: int = 64,
         rules: Optional[AlgebraicRuleSet] = None,
         temperature: float = 0.1,
+        ae_type: str = "att",
     ):
         super().__init__()
 
         self.temperature = temperature
         self.embedder = RPNTokenEmbedder(embed_dim=embed_dim)
-        self.head = RPN_AE(self.embedder, seq_len, embed_dim, proj_dim)
+        
+        RPN_AE = RPN_AE_.get(ae_type, RPN_AE_MLP)
+        self.head = RPN_AE(self.embedder, TOKEN_TO_ID, ID_TO_ARITY, seq_len, embed_dim, proj_dim)
         
         self.use_rules = rules
         self.rules = create_composite_ruleset(TOKEN_TO_ID, pad_token_id=TOKEN_TO_ID["__pad__"])
@@ -294,7 +211,7 @@ class ContrastiveRPN(nn.Module):
         pad_mask : (B, L) bool — True for non-padding positions (inverse of padding column).
         """
         pooled = self.embedder(token_ids, amp)
-        return self.head(pooled)
+        return self.head(pooled, token_ids)
 
     def loss(
         self,
@@ -312,7 +229,7 @@ class ContrastiveRPN(nn.Module):
         
         ### encode original batch
         x = self.embedder(token_ids, amp)
-        z_a = self.head(x)
+        z_a = self.head(x, token_ids)
         
         ### contrastive loss (simple)
         loss = infonce_single_loss(z_a, self.temperature)
@@ -325,7 +242,8 @@ class ContrastiveRPN(nn.Module):
         denoise_distortion_loss = self.masked_criterion(decoded, x, key_padding_mask)
         loss = loss + denoise_distortion_loss
         
-        recoded = self.head(decoded)
+        d_token_ids = self._decode_tokens(decoded)[0]
+        recoded = self.head(decoded, d_token_ids)
         denoise_perception_loss = self.criterion(recoded, z_a)
         loss = loss + denoise_perception_loss
         
@@ -338,7 +256,7 @@ class ContrastiveRPN(nn.Module):
             if r_token_ids.shape[1] == self.seq_len:
                 r_token_ids = r_token_ids.to(device)
                 r_amp = r_amp.to(device)                
-                z_p = self.head(self.embedder(r_token_ids, r_amp))
+                z_p = self.head(self.embedder(r_token_ids, r_amp), r_token_ids)
                 rule_loss = infonce_symmetric_loss(z_a, z_p, self.temperature)
                 if self.use_rules:
                     loss = loss + rule_loss
