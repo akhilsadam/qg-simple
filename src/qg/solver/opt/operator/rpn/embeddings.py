@@ -300,8 +300,8 @@ class TokenEmbedding(nn.Module):
         super().__init__()
         self.embed_dim = embed_dim
 
-        self.token_embed    = nn.Embedding(VOCAB_SIZE,   embed_dim)
-        self.category_embed = nn.Embedding(N_CATEGORIES, embed_dim)
+        self.token_embed    = nn.Embedding(VOCAB_SIZE,   embed_dim//2)
+        self.category_embed = nn.Embedding(N_CATEGORIES, embed_dim//2)
         self._norm     = lambda x:F.normalize(x, dim=-1)
 
         self._init_weights()
@@ -356,7 +356,9 @@ class TokenEmbedding(nn.Module):
         cat_ids = self._id_to_cat[token_ids]           # (B, L)
         tok_emb = self.token_embed(token_ids)          # (B, L, E)
         cat_emb = self.category_embed(cat_ids)         # (B, L, E)
-        return self._norm(tok_emb + cat_emb)           # (B, L, E)
+        # return self._norm(tok_emb + cat_emb)           # (B, L, E)
+        return self._norm(torch.cat([tok_emb,cat_emb], dim=-1)) # (B, L, E)
+        
 
     def decode(self, embed):
         """
@@ -374,7 +376,8 @@ class TokenEmbedding(nn.Module):
             cat_ids = self._id_to_cat[vocab_ids]
             tok_emb = self.token_embed(vocab_ids)
             cat_emb = self.category_embed(cat_ids)
-            reference_embeds = self._norm(tok_emb + cat_emb)  # (V, E)
+            # reference_embeds = self._norm(tok_emb + cat_emb)  # (V, E)
+            reference_embeds = self._norm(torch.cat([tok_emb,cat_emb], dim=-1)) # (V E)
 
         # 2. Compute distances to reference embeddings
         B, L, E = embed.shape
