@@ -212,7 +212,7 @@ class ContrastiveRPN(nn.Module):
         pn = F.normalize(pred, p=2, dim=-1)
         tn = F.normalize(target, p=2, dim=-1)
         
-        token_cos_dist = torch.mean(1 - torch.sum(pn * tn, dim=-1))
+        token_cos_dist = torch.mean((1 - torch.sum(pn * tn, dim=-1)) * mask[:,:,0])
         
         scalar_mse = self.criterion(pred * mask * scalar_mask, target * mask * scalar_mask)
         
