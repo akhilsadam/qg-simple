@@ -311,8 +311,8 @@ class TokenEmbedding(nn.Module):
 
     def _init_weights(self):
         
-        nn.init.eye_(self.token_embed.weight)
-        nn.init.eye_(self.category_embed.weight)
+        nn.init.orthogonal_(self.token_embed.weight)
+        nn.init.orthogonal_(self.category_embed.weight)
 
         # Use category-aware initialisation: tokens in the same category
         # start near each other so the contrastive loss can separate them
