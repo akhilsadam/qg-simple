@@ -326,6 +326,8 @@ class TokenEmbedding(nn.Module):
                 # Just zero the token embed so pure category signal dominates
                 # at init — the token embed learns fine-grained distinctions.
                 self.token_embed.weight[tid].zero_()
+                
+        self.device = self.token_embed.weight.device
 
     def _build_id_to_cat_buffer(self, device: torch.device) -> torch.Tensor:
         """Precomputed tensor: vocab_id → category_id, shape (VOCAB_SIZE,)."""
