@@ -306,6 +306,8 @@ class TokenEmbedding(nn.Module):
 
         self._init_weights()
         self.register_buffer('ids', torch.arange(VOCAB_SIZE)[None,:])
+        
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     def _init_weights(self):
         # Use category-aware initialisation: tokens in the same category
@@ -342,7 +344,6 @@ class TokenEmbedding(nn.Module):
         -------
         (B, L, embed_dim) float tensor, normed
         """
-        self.device = self.token_embed.weight.device
         
         # Build or reuse the vocab→category mapping buffer (avoids Python loop).
         if not hasattr(self, "_id_to_cat") or self._id_to_cat.device != token_ids.device:
