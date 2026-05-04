@@ -82,23 +82,24 @@ class RPN_AE(nn.Module):
     def __init__(self, embedder, TOKEN_TO_ID, ID_TO_ARITY, seq_len=100, embed_dim: int=32, proj_dim: int=64, num_heads=4):
         super().__init__()
         self.embedder = embedder
-        self.register_buffer("freqs", get_rope_freqs(seq_len, embed_dim))
+        token_dim = embed_dim + proj_dim
+        self.register_buffer("freqs", get_rope_freqs(seq_len, token_dim))
         
         
         self.proj = nn.Sequential(
-            nn.Linear(embed_dim, proj_dim),
-            SelfAttention(proj_dim, self.freqs, num_heads=num_heads),
-            LinearLayer(proj_dim),
-            SelfAttention(proj_dim, self.freqs, num_heads=num_heads),
-            LinearLayer(proj_dim),
+            nn.Linear(embed_dim, token_dim),
+            SelfAttention(token_dim, self.freqs, num_heads=num_heads),
+            LinearLayer(token_dim),
+            SelfAttention(token_dim, self.freqs, num_heads=num_heads),
+            nn.Linear(token_dim, proj_dim),
         )
         
         self.unproj = nn.Sequential(
-            SelfAttention(proj_dim + embed_dim, self.freqs, num_heads=num_heads),
-            LinearLayer(proj_dim + embed_dim),
-            SelfAttention(proj_dim + embed_dim, self.freqs, num_heads=num_heads),
-            LinearLayer(proj_dim + embed_dim),
-            nn.Linear(proj_dim + embed_dim, embed_dim),
+            SelfAttention(token_dim, self.freqs, num_heads=num_heads),
+            LinearLayer(token_dim),
+            SelfAttention(token_dim, self.freqs, num_heads=num_heads),
+            LinearLayer(token_dim),
+            nn.Linear(token_dim, embed_dim),
         )
         
         self.seq_len = seq_len
