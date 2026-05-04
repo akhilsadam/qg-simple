@@ -53,7 +53,7 @@ class SelfAttention(nn.Module):
         super().__init__()
         self.mha = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
         self.linear = nn.Linear(embed_dim, embed_dim)
-        self.freqs = freqs
+        self.register_buffer("freqs", freqs)
         
         nn.init.xavier_uniform_(self.linear.weight, gain=0.0001)
         nn.init.zeros_(self.linear.bias)
