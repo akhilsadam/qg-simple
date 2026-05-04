@@ -30,12 +30,14 @@ from .embeddings import (
 
 
 from .ae.naive_mlp import RPN_AE as RPN_AE_NMLP
+from .ae.mlp import RPN_AE as RPN_AE_MLP_Mixer
 from .ae.att import RPN_AE as RPN_AE_ATT
 from .ae.att2 import RPN_AE as RPN_AE_ATT2
 
 
 RPN_AE_ = {
     "nmlp": RPN_AE_NMLP,
+    "mlp_mix": RPN_AE_MLP_Mixer,
     "att": RPN_AE_ATT,
     "att2": RPN_AE_ATT2,
 }
