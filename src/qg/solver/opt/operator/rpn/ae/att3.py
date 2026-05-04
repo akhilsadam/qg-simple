@@ -67,15 +67,18 @@ class RPN_AE(nn.Module):
             MixerBlock(seq_len, embed_dim, proj_dim),
             MixerBlock(seq_len, embed_dim, proj_dim),
         )
-        
-        self.squash = nn.Sequential(
-            nn.Flatten(-2,-1),
-            nn.Linear(seq_len * embed_dim, proj_dim),
-        )
-        self.lift = nn.Sequential(
-            nn.Linear(proj_dim, seq_len * proj_dim),
-            nn.Unflatten(-1, (seq_len, proj_dim)),
-        )
+        self.pool_query = nn.Parameter(torch.randn(1, 1, embed_dim))
+        self.pool_attn  = nn.MultiheadAttention(embed_dim, num_heads=num_heads, batch_first=True)
+        self.squash     = nn.Linear(embed_dim, proj_dim)
+
+        # self.squash = nn.Sequential(
+        #     nn.Flatten(-2,-1),
+        #     nn.Linear(seq_len * embed_dim, proj_dim),
+        # )
+        # self.lift = nn.Sequential(
+        #     nn.Linear(proj_dim, seq_len * proj_dim),
+        #     nn.Unflatten(-1, (seq_len, proj_dim)),
+        # )
 
         self.unproj = nn.Sequential(
             MixerBlock(seq_len, token_dim, token_dim * 2),
@@ -90,8 +93,8 @@ class RPN_AE(nn.Module):
         self.seq_len = seq_len
         self.embed_dim = embed_dim
         self.proj_dim = proj_dim
-        # self.pe_fwd = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))
-        # self.pe_rev = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))  # Learnable reverse positional encoding
+
+        self.pe = nn.Embedding(seq_len, proj_dim)
 
         self.pad_token_id = TOKEN_TO_ID["__pad__"]
         
@@ -102,6 +105,18 @@ class RPN_AE(nn.Module):
         pad = self.embedder(id_, amp_)
         return pad
 
+
+    def pool(self, x):  # x is B L E
+        q = self.pool_query.expand(x.shape[0], -1, -1)  # B 1 E
+        out, _ = self.pool_attn(q, x, x)                # B 1 E
+        return self.squash(out.squeeze(1))               # B proj_dim
+    
+    def lift(self, z):  # z is B proj_dim
+        pos = torch.arange(self.seq_len, device=z.device)
+        pe  = self.pe(pos)[None].expand(z.shape[0], -1, -1)   # B L proj_dim
+        z_  = z[:, None, :].expand(-1, self.seq_len, -1)       # B L proj_dim
+        return z_ + pe                                          # B L proj_dim
+    
     def forward(self, rep: torch.Tensor, ids = None) -> torch.Tensor:
         zero = self.zero(rep)
         rep = rep - zero
@@ -109,12 +124,11 @@ class RPN_AE(nn.Module):
         x = self.proj(x)
         # return x
         # return x.sum(dim=1)  # B, proj_dim
-        return self.squash(x)
+        return self.pool(x)
     
     def reverse(self, rep, pooled):
         x = torch.cat([
             rep, 
-            # pooled[:,None,:].expand(-1, self.seq_len, self.proj_dim)
             self.lift(pooled)
         ], dim=-1)
         
