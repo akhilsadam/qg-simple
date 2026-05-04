@@ -31,11 +31,13 @@ from .embeddings import (
 
 from .ae.naive_mlp import RPN_AE as RPN_AE_NMLP
 from .ae.att import RPN_AE as RPN_AE_ATT
+from .ae.att2 import RPN_AE as RPN_AE_ATT2
 
 
 RPN_AE_ = {
     "nmlp": RPN_AE_NMLP,
     "att": RPN_AE_ATT,
+    "att2": RPN_AE_ATT2,
 }
 
 def masked_mean_pool(
