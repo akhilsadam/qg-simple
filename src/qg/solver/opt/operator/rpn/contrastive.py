@@ -220,7 +220,7 @@ class ContrastiveRPN(nn.Module):
         
         ### basic tokenization
         token_ids, amp = self.tokenize(rpns)
-        device = self.head.pe_fwd.device
+        device = self.embedder.token_embed.weight.device
         token_ids = token_ids.to(device)
         amp = amp.to(device)
         
