@@ -33,6 +33,7 @@ from .ae.naive_mlp import RPN_AE as RPN_AE_NMLP
 from .ae.mlp import RPN_AE as RPN_AE_MLP_Mixer
 from .ae.att import RPN_AE as RPN_AE_ATT
 from .ae.att2 import RPN_AE as RPN_AE_ATT2
+from .ae.att3 import RPN_AE as RPN_AE_ATT3
 
 
 RPN_AE_ = {
@@ -40,6 +41,7 @@ RPN_AE_ = {
     "mlp_mix": RPN_AE_MLP_Mixer,
     "att": RPN_AE_ATT,
     "att2": RPN_AE_ATT2,
+    "att3": RPN_AE_ATT3,
 }
 
 def masked_mean_pool(
