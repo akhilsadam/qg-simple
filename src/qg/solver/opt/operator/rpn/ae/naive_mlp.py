@@ -38,12 +38,14 @@ class RPN_AE(nn.Module):
         
         self.proj = nn.Sequential(
             nn.Flatten(-2,-1),
+            LinearLayer(seq_len * embed_dim),
+            LinearLayer(seq_len * embed_dim),
             nn.Linear(seq_len * embed_dim, proj_dim),
         )
         
         self.unproj = nn.Sequential(
             nn.Flatten(-2,-1),
-            nn.Linear(seq_len*(proj_dim + embed_dim), seq_len * embed_dim),
+            nn.Linear(seq_len * (proj_dim + embed_dim), seq_len * embed_dim),
             nn.Unflatten(-1, (seq_len, embed_dim)),
         )      
         
