@@ -49,16 +49,20 @@ def apply_rope(x, freqs):
     return x_rotated.flatten(-2)
 
 class SelfAttention(nn.Module):
-    def __init__(self, embed_dim, num_heads, dropout=0.0):
+    def __init__(self, embed_dim, freqs, num_heads, dropout=0.0):
         super().__init__()
         self.mha = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
         self.linear = nn.Linear(embed_dim, embed_dim)
+        self.freqs = freqs
         
         nn.init.xavier_uniform_(self.linear.weight, gain=0.0001)
         nn.init.zeros_(self.linear.bias)
         
     def forward(self, x):
-        attn_output, _ = self.mha(x, x, x)
+        q = apply_rope(x, self.freqs)
+        k = apply_rope(x, self.freqs)
+        v = x # 
+        attn_output, _ = self.mha(q, k, v)
         return self.linear(attn_output) + x  # Residual connection
 
 class LinearLayer(nn.Module):
@@ -78,20 +82,22 @@ class RPN_AE(nn.Module):
     def __init__(self, embedder, TOKEN_TO_ID, ID_TO_ARITY, seq_len=100, embed_dim: int=32, proj_dim: int=64, num_heads=4):
         super().__init__()
         self.embedder = embedder
+        self.register_buffer("freqs", get_rope_freqs(seq_len, embed_dim))
+        
         
         self.proj = nn.Sequential(
             nn.Linear(embed_dim, proj_dim),
-            # SelfAttention(proj_dim, num_heads=num_heads),
-            # LinearLayer(proj_dim),
-            # SelfAttention(proj_dim, num_heads=num_heads),
-            # LinearLayer(proj_dim),
+            SelfAttention(proj_dim, self.freqs, num_heads=num_heads),
+            LinearLayer(proj_dim),
+            SelfAttention(proj_dim, self.freqs, num_heads=num_heads),
+            LinearLayer(proj_dim),
         )
         
         self.unproj = nn.Sequential(
-            # SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
-            # LinearLayer(proj_dim + embed_dim),
-            # SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
-            # LinearLayer(proj_dim + embed_dim),
+            SelfAttention(proj_dim + embed_dim, self.freqs, num_heads=num_heads),
+            LinearLayer(proj_dim + embed_dim),
+            SelfAttention(proj_dim + embed_dim, self.freqs, num_heads=num_heads),
+            LinearLayer(proj_dim + embed_dim),
             nn.Linear(proj_dim + embed_dim, embed_dim),
         )
         
@@ -99,7 +105,6 @@ class RPN_AE(nn.Module):
         self.embed_dim = embed_dim
         self.proj_dim = proj_dim
 
-        self.register_buffer("freqs", get_rope_freqs(seq_len, embed_dim))
         self.pad_token_id = TOKEN_TO_ID["__pad__"]
         
     def zero(self):
@@ -111,20 +116,18 @@ class RPN_AE(nn.Module):
     def forward(self, rep: torch.Tensor, ids = None) -> torch.Tensor:
         zero = self.zero()
         rep = rep - zero
-        x = apply_rope(rep, self.freqs)
+        
         x = self.proj(x)
         # return x
         return x.sum(dim=1)  # B, proj_dim
     
     def reverse(self, rep, pooled):
         x = torch.cat([
-            apply_rope(rep, self.freqs),
+            rep,
             pooled[:,None,:].expand(-1, self.seq_len, self.proj_dim)
         ], dim=-1)
         
         x = self.unproj(x)
-        
-        x = apply_rope(x, -1 * self.freqs) # unrotated
         
         zero = self.zero()
         x = x + zero
