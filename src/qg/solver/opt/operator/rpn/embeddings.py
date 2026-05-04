@@ -376,7 +376,11 @@ class TokenEmbedding(nn.Module):
         B, L, E = embed.shape
         # Input 'embed' is already normalized in ContrastiveRPN._decode_tokens
         # Use cdist for batch-efficient distance calculation
-        dists = torch.cdist(embed.view(-1, E), reference_embeds)  # (B*L, V)
+        # dists = torch.cdist(embed.view(-1, E), reference_embeds)  # (B*L, V)
+        
+        embed_n     = F.normalize(embed.view(-1, E), p=2, dim=-1)
+        reference_n = F.normalize(reference_embeds,  p=2, dim=-1)
+        dists       = 1 - (embed_n @ reference_n.T)
         
         token_ids = torch.argmin(dists, dim=-1)
         return token_ids.view(B, L)
