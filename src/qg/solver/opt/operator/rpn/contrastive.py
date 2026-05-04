@@ -199,13 +199,21 @@ class ContrastiveRPN(nn.Module):
         self.criterion = lambda x_hat, x: ((x_hat - x).pow(2).mean() / ((x - x.mean(dim=(-1),keepdim=True)).pow(2).mean() + 1e-8))
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
-    def masked_criterion(self, pred: torch.Tensor, target: torch.Tensor, key_padding_mask: torch.Tensor) -> torch.Tensor:
+    def masked_criterion(self, pred: torch.Tensor, target: torch.Tensor, key_padding_mask: torch.Tensor, scalar_mask: torch.Tensor) -> torch.Tensor:
         # Apply the padding mask to the loss
         # key_padding_mask: True = padding, False = real token
         w = 0.97  # Weight for real tokens
         mask = (~key_padding_mask).float() * w + key_padding_mask.float() * (1 - w)
         mask = mask[:, :, None].to(pred.device)
-        return self.criterion(pred * mask, target * mask)
+        
+        pn = F.normalize(pred, p=2, dim=-1)
+        tn = F.normalize(target, p=2, dim=-1)
+        
+        token_cos_dist = 1 - torch.sum(pn * tn, dim=-1)
+        
+        scalar_mse = self.criterion(pred * mask * scalar_mask, target * mask * scalar_mask)
+        
+        return token_cos_dist, scalar_mse
 
     def encode_token_batch(
         self,
@@ -233,6 +241,7 @@ class ContrastiveRPN(nn.Module):
         
         ### compute padding mask for attention (True = mask out padding)
         key_padding_mask = (token_ids == TOKEN_TO_ID["__pad__"])
+        scalar_mask = (token_ids == TOKEN_TO_ID["__scalar__"])
         
         ### encode original batch
         x = self.embedder(token_ids, amp)
@@ -246,9 +255,9 @@ class ContrastiveRPN(nn.Module):
         t = torch.rand(x.shape[0], device=device)[:, None, None] * 0.5 # less info needed
         x_noised = x * t + noise * (1 - t)
         decoded = self.head.reverse(x_noised, z_a)
-        denoise_distortion_loss = self.masked_criterion(decoded, x, key_padding_mask)
-        loss = loss + denoise_distortion_loss
-        
+        denoise_distortion_loss_token, denoise_distortion_loss_scalar = self.masked_criterion(decoded, x, key_padding_mask, scalar_mask)
+        loss = loss + denoise_distortion_loss_token + denoise_distortion_loss_scalar
+
         d_token_ids = self._decode_tokens(decoded)[0]
         recoded = self.head(decoded, d_token_ids)
         denoise_perception_loss = self.criterion(recoded, z_a)
@@ -277,7 +286,7 @@ class ContrastiveRPN(nn.Module):
         syntax_loss = self._grpo_syntax_loss(z_a, x, device)
         loss = loss + syntax_loss
         
-        return loss, denoise_distortion_loss, denoise_perception_loss, syntax_loss, rule_loss
+        return loss, denoise_distortion_loss_token, denoise_distortion_loss_scalar, denoise_perception_loss, syntax_loss, rule_loss
     
     def _grpo_syntax_loss(
         self,
