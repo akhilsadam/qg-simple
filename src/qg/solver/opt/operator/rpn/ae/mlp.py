@@ -71,10 +71,20 @@ class RPN_AE(nn.Module):
         self.proj = nn.Sequential(
             MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
             MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
-            nn.Linear(embed_dim, proj_dim),
+            MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
         )
         
+        self.squash = nn.Sequential(
+            nn.Flatten(-2,-1),
+            nn.Linear(seq_len * embed_dim, proj_dim),
+        )
+        self.lift = nn.Sequential(
+            nn.Linear(proj_dim, seq_len * proj_dim),
+            nn.Unflatten(-1, (seq_len, proj_dim)),
+        )
+
         self.unproj = nn.Sequential(
+            MixerBlock(seq_len, token_dim, seq_len * 4, token_dim * 2),
             MixerBlock(seq_len, token_dim, seq_len * 4, token_dim * 2),
             MixerBlock(seq_len, token_dim, seq_len * 4, token_dim * 2),
             nn.Linear(token_dim, embed_dim),
@@ -100,12 +110,14 @@ class RPN_AE(nn.Module):
         x = rep + self.pe_fwd[None,...]
         x = self.proj(x)
         # return x
-        return x.sum(dim=1)  # B, proj_dim
+        # return x.sum(dim=1)  # B, proj_dim
+        return self.squash(x)
     
     def reverse(self, rep, pooled):
         x = torch.cat([
             rep + self.pe_rev[None,...], 
-            pooled[:,None,:].expand(-1, self.seq_len, self.proj_dim)
+            # pooled[:,None,:].expand(-1, self.seq_len, self.proj_dim)
+            self.lift(pooled)
         ], dim=-1)
         
         x = self.unproj(x)
