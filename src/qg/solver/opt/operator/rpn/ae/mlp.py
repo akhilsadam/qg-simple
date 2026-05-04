@@ -72,6 +72,9 @@ class RPN_AE(nn.Module):
             MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
             MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
             MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
+            MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
+            MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
+            MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
         )
         
         self.squash = nn.Sequential(
@@ -87,14 +90,17 @@ class RPN_AE(nn.Module):
             MixerBlock(seq_len, token_dim, seq_len * 4, token_dim * 2),
             MixerBlock(seq_len, token_dim, seq_len * 4, token_dim * 2),
             MixerBlock(seq_len, token_dim, seq_len * 4, token_dim * 2),
+            MixerBlock(seq_len, token_dim, seq_len * 4, token_dim * 2),
+            MixerBlock(seq_len, token_dim, seq_len * 4, token_dim * 2),
+            MixerBlock(seq_len, token_dim, seq_len * 4, token_dim * 2),
             nn.Linear(token_dim, embed_dim),
         )      
         
         self.seq_len = seq_len
         self.embed_dim = embed_dim
         self.proj_dim = proj_dim
-        self.pe_fwd = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))
-        self.pe_rev = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))  # Learnable reverse positional encoding
+        # self.pe_fwd = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))
+        # self.pe_rev = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))  # Learnable reverse positional encoding
 
         self.pad_token_id = TOKEN_TO_ID["__pad__"]
         
@@ -107,7 +113,7 @@ class RPN_AE(nn.Module):
     def forward(self, rep: torch.Tensor, ids = None) -> torch.Tensor:
         zero = self.zero()
         rep = rep - zero
-        x = rep + self.pe_fwd[None,...]
+        x = rep
         x = self.proj(x)
         # return x
         # return x.sum(dim=1)  # B, proj_dim
@@ -115,7 +121,7 @@ class RPN_AE(nn.Module):
     
     def reverse(self, rep, pooled):
         x = torch.cat([
-            rep + self.pe_rev[None,...], 
+            rep, 
             # pooled[:,None,:].expand(-1, self.seq_len, self.proj_dim)
             self.lift(pooled)
         ], dim=-1)
