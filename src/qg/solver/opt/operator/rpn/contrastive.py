@@ -182,7 +182,7 @@ class ContrastiveRPN(nn.Module):
         self.temperature = temperature
         self.embedder = RPNTokenEmbedder(embed_dim=embed_dim)
         
-        RPN_AE = RPN_AE_.get(ae_type, RPN_AE_MLP)
+        RPN_AE = RPN_AE_.get(ae_type, RPN_AE_NMLP)
         self.head = RPN_AE(self.embedder, TOKEN_TO_ID, ID_TO_ARITY, seq_len, embed_dim, proj_dim)
         
         self.use_rules = rules
