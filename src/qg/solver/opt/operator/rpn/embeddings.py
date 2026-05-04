@@ -310,24 +310,28 @@ class TokenEmbedding(nn.Module):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     def _init_weights(self):
+        
+        nn.init.eye_(self.token_embed.weight)
+        nn.init.eye_(self.category_embed.weight)
+
         # Use category-aware initialisation: tokens in the same category
         # start near each other so the contrastive loss can separate them
         # based on algebraic role rather than random noise.
-        nn.init.normal_(self.token_embed.weight,    std=0.02)
-        nn.init.normal_(self.category_embed.weight, std=0.1)
+        # nn.init.normal_(self.token_embed.weight,    std=0.02)
+        # nn.init.normal_(self.category_embed.weight, std=0.1)
 
-        # Explicitly set category embeddings to human-interpretable directions.
-        # This gives the model a warm-start that respects the operator taxonomy.
-        with torch.no_grad():
-            for name, cat in TOKEN_TO_CAT.items():
-                if name == "__scalar__":
-                    continue
-                tid = TOKEN_TO_ID[name]
-                cid = int(cat)
-                # Category embed already initialised; no override needed.
-                # Just zero the token embed so pure category signal dominates
-                # at init — the token embed learns fine-grained distinctions.
-                self.token_embed.weight[tid].zero_()
+        # # Explicitly set category embeddings to human-interpretable directions.
+        # # This gives the model a warm-start that respects the operator taxonomy.
+        # with torch.no_grad():
+        #     for name, cat in TOKEN_TO_CAT.items():
+        #         if name == "__scalar__":
+        #             continue
+        #         tid = TOKEN_TO_ID[name]
+        #         cid = int(cat)
+        #         # Category embed already initialised; no override needed.
+        #         # Just zero the token embed so pure category signal dominates
+        #         # at init — the token embed learns fine-grained distinctions.
+        #         self.token_embed.weight[tid].zero_()
                 
     def _build_id_to_cat_buffer(self, device: torch.device) -> torch.Tensor:
         """Precomputed tensor: vocab_id → category_id, shape (VOCAB_SIZE,)."""
