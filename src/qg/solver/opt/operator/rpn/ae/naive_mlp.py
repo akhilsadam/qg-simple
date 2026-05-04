@@ -29,6 +29,37 @@ class LinearLayer(nn.Module):
     def forward(self, x):
         return self.linear(x) + x
 
+
+class MixerBlock(nn.Module):
+    def __init__(self, seq_len, embed_dim, token_dim, channel_dim):
+        super().__init__()
+
+        # Token mixing (mix across sequence)
+        self.token_mlp = nn.Sequential(
+            nn.Linear(seq_len, token_dim),
+            nn.GELU(),
+            nn.Linear(token_dim, seq_len),
+        )
+
+        # Channel mixing (mix across embedding)
+        self.channel_mlp = nn.Sequential(
+            nn.Linear(embed_dim, channel_dim),
+            nn.GELU(),
+            nn.Linear(channel_dim, embed_dim),
+        )
+
+    def forward(self, x):  # (B, L, E)
+        # --- Token mixing ---
+        y = x.transpose(1, 2)         # (B, E, L)
+        y = self.token_mlp(y)
+        y = y.transpose(1, 2)         # (B, L, E)
+        x = x + y                     # residual
+
+        # --- Channel mixing ---
+        x = x + self.channel_mlp(x)
+
+        return x
+
 class RPN_AE(nn.Module):
     """Pool sequence embeddings and project to contrastive space."""
 
@@ -38,13 +69,15 @@ class RPN_AE(nn.Module):
         
         self.proj = nn.Sequential(
             nn.Flatten(-2,-1),
-            LinearLayer(seq_len * embed_dim),
-            LinearLayer(seq_len * embed_dim),
+            MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
+            MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
             nn.Linear(seq_len * embed_dim, proj_dim),
         )
         
         self.unproj = nn.Sequential(
             nn.Flatten(-2,-1),
+            MixerBlock(seq_len, token_dim, seq_len * 4, token_dim * 2),
+            MixerBlock(seq_len, token_dim, seq_len * 4, token_dim * 2),
             nn.Linear(seq_len * (proj_dim + embed_dim), seq_len * embed_dim),
             nn.Unflatten(-1, (seq_len, embed_dim)),
         )      
