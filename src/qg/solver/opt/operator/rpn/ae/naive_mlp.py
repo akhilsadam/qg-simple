@@ -62,8 +62,8 @@ class RPN_AE(nn.Module):
         return pad
 
     def forward(self, rep: torch.Tensor, ids = None) -> torch.Tensor:
-        zero = self.zero()
-        rep = rep - zero
+        # zero = self.zero()
+        # rep = rep - zero
         x = rep + self.pe_fwd[None,...]
         x = self.proj(x)
         return x
@@ -77,7 +77,7 @@ class RPN_AE(nn.Module):
         
         x = self.unproj(x)
         
-        zero = self.zero()
-        x = x + zero
+        # zero = self.zero()
+        # x = x + zero
         
         return x  # B, seq_len, embed_dim
