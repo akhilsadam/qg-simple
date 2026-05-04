@@ -206,6 +206,9 @@ class ContrastiveRPN(nn.Module):
         mask = (~key_padding_mask).float() * w + key_padding_mask.float() * (1 - w)
         mask = mask[:, :, None].to(pred.device)
         
+        scalar_mask = scalar_mask.float().to(pred.device)
+        scalar_mask = scalar_mask[:, :, None].to(pred.device)
+        
         pn = F.normalize(pred, p=2, dim=-1)
         tn = F.normalize(target, p=2, dim=-1)
         
@@ -248,7 +251,7 @@ class ContrastiveRPN(nn.Module):
         z_a = self.head(x, token_ids)
         
         ### contrastive loss (simple)
-        loss = infonce_single_loss(z_a, self.temperature)
+        loss = 0.0 # infonce_single_loss(z_a, self.temperature)
         
         ### denoiser (reconstruction via one-step conditional flow-matching)
         noise = torch.randn_like(x)
