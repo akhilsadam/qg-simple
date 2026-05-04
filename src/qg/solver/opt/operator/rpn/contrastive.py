@@ -191,6 +191,7 @@ class ContrastiveRPN(nn.Module):
         self.seq_len = seq_len
         self.embed_dim = embed_dim
         self.criterion = lambda x_hat, x: ((x_hat - x).pow(2).mean() / ((x - x.mean(dim=(-1),keepdim=True)).pow(2).mean() + 1e-8))
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
     def masked_criterion(self, pred: torch.Tensor, target: torch.Tensor, key_padding_mask: torch.Tensor) -> torch.Tensor:
         # Apply the padding mask to the loss
