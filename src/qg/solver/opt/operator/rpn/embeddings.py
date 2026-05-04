@@ -311,14 +311,14 @@ class TokenEmbedding(nn.Module):
 
     def _init_weights(self):
         
-        nn.init.orthogonal_(self.token_embed.weight)
-        nn.init.orthogonal_(self.category_embed.weight)
+        # nn.init.orthogonal_(self.token_embed.weight)
+        # nn.init.orthogonal_(self.category_embed.weight)
 
         # Use category-aware initialisation: tokens in the same category
         # start near each other so the contrastive loss can separate them
         # based on algebraic role rather than random noise.
-        # nn.init.normal_(self.token_embed.weight,    std=0.02)
-        # nn.init.normal_(self.category_embed.weight, std=0.1)
+        nn.init.normal_(self.token_embed.weight,    std=0.1)
+        nn.init.normal_(self.category_embed.weight, std=0.1)
 
         # # Explicitly set category embeddings to human-interpretable directions.
         # # This gives the model a warm-start that respects the operator taxonomy.
