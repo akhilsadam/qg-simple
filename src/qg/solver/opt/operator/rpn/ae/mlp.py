@@ -35,7 +35,6 @@ class MixerBlock(nn.Module):
 
         # Token mixing (mix across sequence)
         self.token_mlp = nn.Sequential(
-            nn.LayerNorm(embed_dim),
             nn.Linear(seq_len, token_dim),
             nn.GELU(),
             nn.Linear(token_dim, seq_len),
@@ -43,7 +42,6 @@ class MixerBlock(nn.Module):
 
         # Channel mixing (mix across embedding)
         self.channel_mlp = nn.Sequential(
-            nn.LayerNorm(embed_dim),
             nn.Linear(embed_dim, channel_dim),
             nn.GELU(),
             nn.Linear(channel_dim, embed_dim),
