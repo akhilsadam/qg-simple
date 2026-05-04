@@ -91,9 +91,9 @@ _VOCAB_DEF: List[Tuple[str, TokenCategory]] = [
     ("sqrt",     TokenCategory.NONLINEAR_UNARY),
     ("cos",      TokenCategory.NONLINEAR_UNARY),
     ("sin",      TokenCategory.NONLINEAR_UNARY),
-    ("cosh",     TokenCategory.NONLINEAR_UNARY),
-    ("sinh",     TokenCategory.NONLINEAR_UNARY),
-    ("tanh",     TokenCategory.NONLINEAR_UNARY),
+    # ("cosh",     TokenCategory.NONLINEAR_UNARY),
+    # ("sinh",     TokenCategory.NONLINEAR_UNARY),
+    # ("tanh",     TokenCategory.NONLINEAR_UNARY),
     ("exp",      TokenCategory.NONLINEAR_UNARY),
     ("square",   TokenCategory.NONLINEAR_UNARY),
     ("cube",     TokenCategory.NONLINEAR_UNARY),
@@ -105,10 +105,10 @@ _VOCAB_DEF: List[Tuple[str, TokenCategory]] = [
     ("*",        TokenCategory.BINARY_OP),
 
     # --- vector calculus ---
-    ("grad",     TokenCategory.VECTOR_OP),
-    ("div",      TokenCategory.VECTOR_OP),
-    ("curl",     TokenCategory.VECTOR_OP),
-    ("dot",      TokenCategory.VECTOR_OP),
+    # ("grad",     TokenCategory.VECTOR_OP),
+    # ("div",      TokenCategory.VECTOR_OP),
+    # ("curl",     TokenCategory.VECTOR_OP),
+    # ("dot",      TokenCategory.VECTOR_OP),
 
     # --- Jacobian ---
     ("jacobian", TokenCategory.JACOBIAN),
