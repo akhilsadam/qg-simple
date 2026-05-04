@@ -81,17 +81,17 @@ class RPN_AE(nn.Module):
         
         self.proj = nn.Sequential(
             nn.Linear(embed_dim, proj_dim),
-            SelfAttention(proj_dim, num_heads=num_heads),
-            LinearLayer(proj_dim),
-            SelfAttention(proj_dim, num_heads=num_heads),
-            LinearLayer(proj_dim),
+            # SelfAttention(proj_dim, num_heads=num_heads),
+            # LinearLayer(proj_dim),
+            # SelfAttention(proj_dim, num_heads=num_heads),
+            # LinearLayer(proj_dim),
         )
         
         self.unproj = nn.Sequential(
-            SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
-            LinearLayer(proj_dim + embed_dim),
-            SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
-            LinearLayer(proj_dim + embed_dim),
+            # SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
+            # LinearLayer(proj_dim + embed_dim),
+            # SelfAttention(proj_dim + embed_dim, num_heads=num_heads),
+            # LinearLayer(proj_dim + embed_dim),
             nn.Linear(proj_dim + embed_dim, embed_dim),
         )
         
