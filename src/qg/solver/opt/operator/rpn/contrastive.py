@@ -220,7 +220,7 @@ class ContrastiveRPN(nn.Module):
         
         ### basic tokenization
         token_ids, amp = self.tokenize(rpns)
-        device = self.embedder.token_embed.weight.device
+        device = self.embedder.token_embed.token_embed.weight.device
         token_ids = token_ids.to(device)
         amp = amp.to(device)
         
@@ -387,7 +387,7 @@ class ContrastiveRPN(nn.Module):
         rpns: Sequence[str],
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         token_ids, amp = self.tokenize(rpns)
-        device = self.embedder.token_embed.weight.device
+        device = self.embedder.token_embed.token_embed.weight.device
         token_ids = token_ids.to(device)
         amp = amp.to(device)
         return self.encode_token_batch(token_ids, amp)
