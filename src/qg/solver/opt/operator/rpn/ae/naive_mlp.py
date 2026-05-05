@@ -80,7 +80,7 @@ class RPN_AE(nn.Module):
             MixerBlock(seq_len, token_dim, seq_len * 4, token_dim * 2),
             MixerBlock(seq_len, token_dim, seq_len * 4, token_dim * 2),
             nn.Flatten(-2,-1),
-            nn.Linear(seq_len * todim, seq_len * embed_dim),
+            nn.Linear(seq_len * token_dim, seq_len * embed_dim),
             nn.Unflatten(-1, (seq_len, embed_dim)),
         )      
         
