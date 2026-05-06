@@ -88,7 +88,9 @@ class QG():
             
             if prof is not None:
                 prof.step()  # Step the profiler
-            
+        
+        
+        solution[:, -1, ...] = state.out() # B T C H W
                 
         return solution
     
