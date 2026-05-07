@@ -3,19 +3,22 @@
 
 qg:
   grid:
-    Nx: 256
-    Ny: 256
+    Nx: 128
+    Ny: 128
+    precision: float64
   
   time:
-    dt: 0.001
-    T: 60
-    save_rate: 100
+    dt: 0.0001
+    T: 10
+    save_rate: 1000
   
   pde:
-    nu: 1.025e-5  # Viscosity
+    nu: 1.025e-2  # Viscosity
   
   ic:
-    n_batch: 20
+    n_batch: 1
+    energy: 0.1
+    wavenumbers: [3.0, 5.0]
   
   forcing: null  # No forcing
   mask: null     # No obstacles

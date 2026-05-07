@@ -79,7 +79,7 @@ class QG():
         B = state.qh.shape[0]  # Number of batches
         solution = torch.zeros([B, int(steps/save_rate)+1, 4, self.grid.Ny, self.grid.Nx])
         
-        for it in tqdm(range(steps - 1)):
+        for it in tqdm(range(steps)):
             self.step(state)            
             
             if (it+1) % save_rate == 0:
