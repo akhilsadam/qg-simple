@@ -67,7 +67,7 @@ class RPN_AE(nn.Module):
         super().__init__()
         self.embedder = embedder
         
-        self.token_dim = 4 * embed_dim
+        token_dim = 4 * embed_dim
         
         self.proj = nn.Sequential(
             nn.Linear(embed_dim, token_dim),
