@@ -70,6 +70,7 @@ class RPN_AE(nn.Module):
         self.proj = nn.Sequential(
             MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
             MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
+            MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
             nn.Flatten(-2,-1),
             nn.Linear(seq_len * embed_dim, proj_dim),
         )
@@ -81,13 +82,15 @@ class RPN_AE(nn.Module):
             nn.Unflatten(-1, (seq_len, embed_dim)),
             MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
             MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
+            MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
+            
         )      
         
         self.seq_len = seq_len
         self.embed_dim = embed_dim
         self.proj_dim = proj_dim
         self.pe_fwd = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))
-        self.pe_rev = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))  # Learnable reverse positional encoding
+        # self.pe_rev = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))  # Learnable reverse positional encoding
 
         self.pad_token_id = TOKEN_TO_ID["__pad__"]
         
