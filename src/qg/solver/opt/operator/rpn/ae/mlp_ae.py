@@ -67,23 +67,24 @@ class RPN_AE(nn.Module):
         super().__init__()
         self.embedder = embedder
         
+        self.token_dim = 4 * embed_dim
+        
         self.proj = nn.Sequential(
-            MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
-            MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
-            MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
+            nn.Linear(embed_dim, token_dim),
+            MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
+            MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
+            MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
             nn.Flatten(-2,-1),
-            nn.Linear(seq_len * embed_dim, proj_dim),
+            nn.Linear(seq_len * token_dim, proj_dim),
         )
-        
-        token_dim = proj_dim + embed_dim
-        
+                
         self.unproj = nn.Sequential( 
-            nn.Linear(proj_dim, seq_len * embed_dim),
-            nn.Unflatten(-1, (seq_len, embed_dim)),
-            MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
-            MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
-            MixerBlock(seq_len, embed_dim, seq_len * 4, proj_dim),
-            
+            nn.Linear(proj_dim, seq_len * token_dim),
+            nn.Unflatten(-1, (seq_len, token_dim)),
+            MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
+            MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
+            MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
+            nn.Linear(token_dim, embed_dim),            
         )      
         
         self.seq_len = seq_len
