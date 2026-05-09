@@ -330,7 +330,7 @@ class ContrastiveRPN(nn.Module):
         # importantly both pairs are only when different from initial token
         masked_supcon_loss = 0.0
         if self.training:
-            masked_supcon_loss = masked_supcon(x, token_ids, d_token_ids, self.temperature)
+            masked_supcon_loss = 0.1 * masked_supcon(x, token_ids, d_token_ids, self.temperature)
         loss = loss + masked_supcon_loss
 
         recoded = self.head(decoded, d_token_ids)
