@@ -119,7 +119,7 @@ def masked_supcon(embd, ids, reco_ids, temp=0.1):
     reco_ids = reco_ids[mask]
 
     if len(z) <= 1:
-        return torch.tensor(0.0, device=decoded.device)
+        return torch.tensor(0.0, device=embd.device)
 
     # normalize embeddings
     z = F.normalize(z, dim=-1)
