@@ -208,7 +208,7 @@ class ContrastiveRPN(nn.Module):
         mask = (~key_padding_mask).float() * w + key_padding_mask.float() * (1 - w)
         mask = mask[:, :, None].to(pred.device)
         
-        scalar_mask = scalar_mask.float().to(pred.device)
+        scalar_mask = scalar_mask.to(pred.device)
         scalar_mask = scalar_mask[:, :, None].to(pred.device)
         
         pn = F.normalize(pred, p=2, dim=-1)
@@ -216,7 +216,7 @@ class ContrastiveRPN(nn.Module):
         
         token_cos_dist = torch.mean((1 - torch.sum(pn * tn, dim=-1)) * mask[:,:,0]) / (pn.shape[-1] ** 0.5)
         
-        scalar_mse = self.criterion(pred * mask * scalar_mask, target * mask * scalar_mask)
+        scalar_mse = self.criterion(pred * scalar_mask, target * scalar_mask)
         
         return token_cos_dist, scalar_mse
 
@@ -264,10 +264,12 @@ class ContrastiveRPN(nn.Module):
         
         x_noised = x * t + noise * (1 - t)
         decoded = self.head.reverse(x_noised, z_a)
+        d_token_ids = self._decode_tokens(decoded)[0]
+        scalar_mask = scalar_mask.float() * (d_token_ids == TOKEN_TO_ID["__scalar__"]).float()
+                
         denoise_distortion_loss_token, denoise_distortion_loss_scalar = self.masked_criterion(decoded, x, key_padding_mask, scalar_mask)
         loss = loss + denoise_distortion_loss_token + denoise_distortion_loss_scalar
 
-        d_token_ids = self._decode_tokens(decoded)[0]
         recoded = self.head(decoded, d_token_ids)
         denoise_perception_loss = self.criterion(recoded, z_a)
         loss = loss + denoise_perception_loss

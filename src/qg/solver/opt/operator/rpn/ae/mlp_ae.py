@@ -81,6 +81,8 @@ class RPN_AE(nn.Module):
         self.unproj = nn.Sequential( 
             nn.Linear(proj_dim, seq_len * token_dim),
             nn.Unflatten(-1, (seq_len, token_dim)),
+        )
+        self.decode = nn.Sequential( 
             MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
             MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
             MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
@@ -90,8 +92,8 @@ class RPN_AE(nn.Module):
         self.seq_len = seq_len
         self.embed_dim = embed_dim
         self.proj_dim = proj_dim
-        #self.pe_fwd = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))
-        # self.pe_rev = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))  # Learnable reverse positional encoding
+        self.pe_fwd = nn.Parameter(0.01 * torch.randn(seq_len, embed_dim))
+        self.pe_rev = nn.Parameter(0.01 * torch.randn(seq_len, token_dim))  # Learnable reverse positional encoding
 
         self.pad_token_id = TOKEN_TO_ID["__pad__"]
         
@@ -104,7 +106,7 @@ class RPN_AE(nn.Module):
     def forward(self, rep: torch.Tensor, ids = None) -> torch.Tensor:
         # zero = self.zero()
         # rep = rep - zero
-        x = rep #+ self.pe_fwd[None,...]
+        x = rep + self.pe_fwd[None,...]
         x = self.proj(x)
         return x
         # return x.sum(dim=1)  # B, proj_dim
@@ -117,7 +119,8 @@ class RPN_AE(nn.Module):
         
         x = pooled
         
-        x = self.unproj(x)
+        x = self.unproj(x) + self.pe_rev[None,...]
+        x = self.decode(x)
         
         # zero = self.zero()
         # x = x + zero
