@@ -258,6 +258,10 @@ class ContrastiveRPN(nn.Module):
         ### denoiser (reconstruction via one-step conditional flow-matching)
         noise = torch.randn_like(x)
         t = torch.rand(x.shape[0], device=device)[:, None, None] * 0.5 # less info needed
+        
+        if not self.training:
+            t = t * 0.0
+        
         x_noised = x * t + noise * (1 - t)
         decoded = self.head.reverse(x_noised, z_a)
         denoise_distortion_loss_token, denoise_distortion_loss_scalar = self.masked_criterion(decoded, x, key_padding_mask, scalar_mask)
@@ -417,3 +421,5 @@ class ContrastiveRPN(nn.Module):
         noisy_pooled = torch.randn((encoded.shape[0], self.seq_len, self.embed_dim), device=encoded.device)
         decoded = self.head.reverse(noisy_pooled, encoded)
         return self._decode_tokens(decoded)
+    
+    
