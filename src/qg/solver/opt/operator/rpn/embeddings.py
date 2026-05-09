@@ -300,7 +300,7 @@ class TokenEmbedding(nn.Module):
         super().__init__()
         self.embed_dim = embed_dim
 
-        self.token_embed    = nn.Embedding(VOCAB_SIZE,   embed_dim) #//2)
+        self.token_embed    = nn.Embedding(VOCAB_SIZE,   embed_dim//2)
         self.category_embed = nn.Embedding(N_CATEGORIES, embed_dim//2)
         self._norm     = lambda x:F.normalize(x, dim=-1)
 
