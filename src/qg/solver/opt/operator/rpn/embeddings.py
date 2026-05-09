@@ -301,7 +301,7 @@ class TokenEmbedding(nn.Module):
         self.embed_dim = embed_dim
 
         self.token_embed    = nn.Embedding(VOCAB_SIZE,   embed_dim) #//2)
-        # self.category_embed = nn.Embedding(N_CATEGORIES, embed_dim//2)
+        self.category_embed = nn.Embedding(N_CATEGORIES, embed_dim//2)
         self._norm     = lambda x:F.normalize(x, dim=-1)
 
         self._init_weights()
@@ -311,14 +311,14 @@ class TokenEmbedding(nn.Module):
 
     def _init_weights(self):
         
-        nn.init.orthogonal_(self.token_embed.weight)
+        # nn.init.orthogonal_(self.token_embed.weight)
         # nn.init.orthogonal_(self.category_embed.weight)
 
         # Use category-aware initialisation: tokens in the same category
         # start near each other so the contrastive loss can separate them
         # based on algebraic role rather than random noise.
-        # nn.init.normal_(self.token_embed.weight,    std=0.1)
-        # nn.init.normal_(self.category_embed.weight, std=0.1)
+        nn.init.normal_(self.token_embed.weight,    std=0.1)
+        nn.init.normal_(self.category_embed.weight, std=0.1)
 
         # # Explicitly set category embeddings to human-interpretable directions.
         # # This gives the model a warm-start that respects the operator taxonomy.
@@ -350,16 +350,16 @@ class TokenEmbedding(nn.Module):
         """
         
         # Build or reuse the vocab→category mapping buffer (avoids Python loop).
-        # if not hasattr(self, "_id_to_cat") or self._id_to_cat.device != token_ids.device:
-        #     self._id_to_cat = self._build_id_to_cat_buffer(token_ids.device)
+        if not hasattr(self, "_id_to_cat") or self._id_to_cat.device != token_ids.device:
+            self._id_to_cat = self._build_id_to_cat_buffer(token_ids.device)
 
-        # cat_ids = self._id_to_cat[token_ids]           # (B, L)
-        # tok_emb = self.token_embed(token_ids)          # (B, L, E)
-        # cat_emb = self.category_embed(cat_ids)         # (B, L, E)
+        cat_ids = self._id_to_cat[token_ids]           # (B, L)
+        tok_emb = self.token_embed(token_ids)          # (B, L, E)
+        cat_emb = self.category_embed(cat_ids)         # (B, L, E)
         # return self._norm(tok_emb + cat_emb)           # (B, L, E)
-        # return self._norm(torch.cat([tok_emb,cat_emb], dim=-1)) # (B, L, E)
+        return self._norm(torch.cat([tok_emb,cat_emb], dim=-1)) # (B, L, E)
         
-        return self._norm(self.token_embed(token_ids))
+        # return self._norm(self.token_embed(token_ids))
         
 
     def decode(self, embed):
@@ -372,16 +372,16 @@ class TokenEmbedding(nn.Module):
             vocab_ids = self.ids[0]  # (V,)
             
             # Reuse forward logic to get actual embeddings used in training
-            # if not hasattr(self, "_id_to_cat") or self._id_to_cat.device != vocab_ids.device:
-            #     self._id_to_cat = self._build_id_to_cat_buffer(vocab_ids.device)
+            if not hasattr(self, "_id_to_cat") or self._id_to_cat.device != vocab_ids.device:
+                self._id_to_cat = self._build_id_to_cat_buffer(vocab_ids.device)
 
-            # cat_ids = self._id_to_cat[vocab_ids]
-            # tok_emb = self.token_embed(vocab_ids)
-            # cat_emb = self.category_embed(cat_ids)
+            cat_ids = self._id_to_cat[vocab_ids]
+            tok_emb = self.token_embed(vocab_ids)
+            cat_emb = self.category_embed(cat_ids)
             # reference_embeds = self._norm(tok_emb + cat_emb)  # (V, E)
-            # reference_embeds = self._norm(torch.cat([tok_emb,cat_emb], dim=-1)) # (V E)
+            reference_embeds = self._norm(torch.cat([tok_emb,cat_emb], dim=-1)) # (V E)
 
-            reference_embeds = self._norm(self.token_embed(vocab_ids))
+            # reference_embeds = self._norm(self.token_embed(vocab_ids))
             
         # 2. Compute distances to reference embeddings
         B, L, E = embed.shape
