@@ -99,6 +99,55 @@ def infonce_symmetric_loss(
     loss_b = F.cross_entropy(logits_ba, targets)
     return 0.5 * (loss_a + loss_b)
 
+
+def masked_supcon(embd, ids, reco_ids, temp=0.1):
+    """
+    embd  : (..., d) embeddings
+    ids      : (...) original token ids
+    reco_ids : (...) reconstructed token ids
+    """
+
+    z = embd.flatten(0, -2)
+    ids = ids.flatten()
+    reco_ids = reco_ids.flatten()
+
+    # only include positions where reconstruction changed token
+    mask = reco_ids != ids
+
+    z = z[mask]
+    ids = ids[mask]
+    reco_ids = reco_ids[mask]
+
+    if len(z) <= 1:
+        return torch.tensor(0.0, device=decoded.device)
+
+    # normalize embeddings
+    z = F.normalize(z, dim=-1)
+
+    # pairwise similarities
+    logits = z @ z.T
+    logits = logits / temp
+
+    # remove self-comparisons
+    self_mask = torch.eye(len(z), device=z.device, dtype=torch.bool)
+
+    # positives = same ORIGINAL token id
+    pos_mask = (ids[:, None] == ids[None, :]) & (~self_mask)
+
+    # log prob
+    log_probs = F.log_softmax(logits.masked_fill(self_mask, -1e9), dim=1)
+
+    # supervised contrastive loss
+    pos_counts = pos_mask.sum(dim=1)
+
+    valid = pos_counts > 0
+    loss = -(log_probs * pos_mask.float()).sum(dim=1)
+
+    loss = loss[valid] / pos_counts[valid]
+    loss = loss.mean()
+
+    return loss
+
 def validate_rpn_syntax(token_ids: torch.Tensor) -> torch.Tensor:
     """
     Validate RPN syntax per sequence via stack-based evaluation.
@@ -201,7 +250,8 @@ class ContrastiveRPN(nn.Module):
         self.criterion = lambda x_hat, x: ((x_hat - x).pow(2).mean() / ((x - x.mean(dim=(-1),keepdim=True)).pow(2).mean() + 1e-8))
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
-    def masked_criterion(self, pred: torch.Tensor, target: torch.Tensor, key_padding_mask: torch.Tensor, scalar_mask: torch.Tensor) -> torch.Tensor:
+    def masked_criterion(self, pred: torch.Tensor, target: torch.Tensor,
+                         key_padding_mask: torch.Tensor, scalar_mask: torch.Tensor) -> torch.Tensor:
         # Apply the padding mask to the loss
         # key_padding_mask: True = padding, False = real token
         w = 0.97  # Weight for real tokens
@@ -252,8 +302,8 @@ class ContrastiveRPN(nn.Module):
         x = self.embedder(token_ids, amp)
         z_a = self.head(x, token_ids)
         
-        ### contrastive loss (simple)
-        loss = 0.0 # infonce_single_loss(z_a, self.temperature)
+        loss = 0.0 
+        
         
         ### denoiser (reconstruction via one-step conditional flow-matching)
         noise = torch.randn_like(x)
@@ -264,11 +314,24 @@ class ContrastiveRPN(nn.Module):
         
         x_noised = x * t + noise * (1 - t)
         decoded = self.head.reverse(x_noised, z_a)
-        d_token_ids = self._decode_tokens(decoded)[0]
+        d_token_ids = self._decode_tokens(decoded)[0].to(device)
         scalar_mask = scalar_mask.float() * (d_token_ids == TOKEN_TO_ID["__scalar__"]).float()
                 
-        denoise_distortion_loss_token, denoise_distortion_loss_scalar = self.masked_criterion(decoded, x, key_padding_mask, scalar_mask)
+        denoise_distortion_loss_token, denoise_distortion_loss_scalar = \
+            self.masked_criterion(decoded, x, 
+                                  key_padding_mask, scalar_mask)
         loss = loss + denoise_distortion_loss_token + denoise_distortion_loss_scalar
+
+        ### contrastive loss (simple) to avoid representation collapse among ids
+        # want LLM to be able to distinguish ids...and not collapse them further
+        # i.e. use supcon (Isola, supervised contrastive learning)
+        # with positive pairs the same token ids, negative pairs different token ids
+        # on the output of the decoder.
+        # importantly both pairs are only when different from initial token
+        masked_supcon_loss = 0.0
+        if self.training:
+            masked_supcon_loss = masked_supcon(x, token_ids, d_token_ids, self.temperature)
+        loss = loss + masked_supcon_loss
 
         recoded = self.head(decoded, d_token_ids)
         denoise_perception_loss = self.criterion(recoded, z_a)
@@ -297,7 +360,7 @@ class ContrastiveRPN(nn.Module):
         syntax_loss = self._grpo_syntax_loss(z_a, x, device)
         loss = loss + syntax_loss
         
-        return loss, denoise_distortion_loss_token, denoise_distortion_loss_scalar, denoise_perception_loss, syntax_loss, rule_loss
+        return loss, masked_supcon_loss, denoise_distortion_loss_token, denoise_distortion_loss_scalar, denoise_perception_loss, syntax_loss, rule_loss
     
     def _grpo_syntax_loss(
         self,
