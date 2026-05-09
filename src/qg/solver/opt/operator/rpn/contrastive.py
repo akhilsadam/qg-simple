@@ -360,7 +360,9 @@ class ContrastiveRPN(nn.Module):
         syntax_loss = self._grpo_syntax_loss(z_a, x, device)
         loss = loss + syntax_loss
         
-        token_acc = torch.count_nonzero(token_ids == d_token_ids) / (token_ids.shape[0] * token_ids.shape[1])
+        w = ((key_padding_mask).float() * 0.03 + (~key_padding_mask).float() * 0.97)
+        n = torch.sum(w)
+        token_acc = torch.sum((token_ids == d_token_ids).float() * w) / n
         
         return loss, token_acc, masked_supcon_loss, denoise_distortion_loss_token, denoise_distortion_loss_scalar, denoise_perception_loss, syntax_loss, rule_loss
     
