@@ -564,8 +564,8 @@ class QwenContrastiveRPN(nn.Module):
  
         # ── 1. Distortion loss (hidden-space)  ────────────────────────────
         # Get target hidden states from original inputs
-        with torch.no_grad():
-            h_target = self.distortion_head.get_hidden(input_ids, attention_mask)  # (B, L, H)
+        # with torch.no_grad():
+        #     h_target = self.distortion_head.get_hidden(input_ids, attention_mask)  # (B, L, H)
  
         # Teacher-forced decoder: use input as both input and label
         # Labels: shift by 1 (causal LM convention), ignore pad positions
