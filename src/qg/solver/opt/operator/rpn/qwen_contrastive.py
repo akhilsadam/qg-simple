@@ -131,8 +131,7 @@ class QwenEncoder(nn.Module):
         # Masked mean-pool over non-padding positions
         mask = attention_mask.bool()        # True = real token
         pooled = masked_mean_pool(hidden, mask)  # (B, H)
-        return self.proj(pooled)            # (B, proj_dim)
- 
+        return self.proj(pooled.to(torch.float32)) # (B, proj_dim)
  
 # ---------------------------------------------------------------------------
 # Qwen decoder: proj_dim vector → token logits (teacher-forced)
@@ -192,7 +191,7 @@ class QwenDecoder(nn.Module):
  
     def forward_teacher(self, z, input_ids, labels, attention_mask):
         B, L = input_ids.shape
-        latent_embed = self.latent_proj(z).unsqueeze(1)
+        latent_embed = self.latent_proj(z).to(torch.bfloat16).unsqueeze(1)
         token_embeds = self.embed_tokens(input_ids)
         inputs_embeds = torch.cat([latent_embed, token_embeds], dim=1)  # (B, 1+L, H)
 
@@ -204,7 +203,7 @@ class QwenDecoder(nn.Module):
             attention_mask=full_mask,
             use_cache=False,
         )
-        logits = self.lm_head(out.last_hidden_state[:, 1:, :])  # strip prefix → (B, L, V)
+        logits = self.lm_head(out.last_hidden_state[:, 1:, :]).float()  # strip prefix → (B, L, V)
 
         # Causal shift: position i predicts position i+1
         lm_loss = F.cross_entropy(
@@ -218,7 +217,7 @@ class QwenDecoder(nn.Module):
     def generate(self, z, bos_id, eos_id):
         B = z.size(0)
         device = z.device
-        latent_embed = self.latent_proj(z).unsqueeze(1)   # (B, 1, H)
+        latent_embed = self.latent_proj(z).to(torch.bfloat16).unsqueeze(1)   # (B, 1, H)
 
         cur_ids = torch.full((B, 1), bos_id, dtype=torch.long, device=device)
         generated = []
@@ -236,7 +235,7 @@ class QwenDecoder(nn.Module):
                 attention_mask = torch.ones(B, past_len + 1, device=device, dtype=torch.long)
 
             out = self.transformer(
-                inputs_embeds=inputs_embeds,
+                inputs_embeds=inputs_embeds.to(torch.bfloat16),
                 attention_mask=attention_mask,
                 past_key_values=past,
                 use_cache=True,
@@ -379,6 +378,7 @@ class QwenContrastiveRPN(nn.Module):
             bias="none",
         )
         self.qwen = get_peft_model(base_model, lora_cfg)
+        self.qwen = self.qwen.to(torch.bfloat16)
         self.qwen.print_trainable_parameters()
  
         hidden_size = self.qwen.config.hidden_size
