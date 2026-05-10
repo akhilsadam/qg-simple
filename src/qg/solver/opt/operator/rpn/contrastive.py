@@ -373,7 +373,7 @@ class ContrastiveRPN(nn.Module):
         z_a: torch.Tensor,
         pooled: torch.Tensor,
         device: torch.device,
-        num_samples: int = 3,
+        num_samples: int = 8,
     ) -> torch.Tensor:
         """
         GRPO-style loss: sample multiple decoded rollouts, compute syntax validity,
