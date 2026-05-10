@@ -74,6 +74,8 @@ class RPN_AE(nn.Module):
             MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
             MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
             MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
+            MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
+            MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
             nn.Flatten(-2,-1),
             nn.Linear(seq_len * token_dim, proj_dim),
         )
@@ -83,6 +85,8 @@ class RPN_AE(nn.Module):
             nn.Unflatten(-1, (seq_len, token_dim)),
         )
         self.decode = nn.Sequential( 
+            MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
+            MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
             MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
             MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
             MixerBlock(seq_len, token_dim, seq_len * 4, proj_dim),
@@ -104,25 +108,13 @@ class RPN_AE(nn.Module):
         return pad
 
     def forward(self, rep: torch.Tensor, ids = None) -> torch.Tensor:
-        # zero = self.zero()
-        # rep = rep - zero
         x = rep + self.pe_fwd[None,...]
         x = self.proj(x)
         return x
-        # return x.sum(dim=1)  # B, proj_dim
+
     
-    def reverse(self, rep, pooled):
-        # x = torch.cat([
-        #     rep + self.pe_rev[None,...], 
-        #     pooled[:,None,:].expand(-1, self.seq_len, self.proj_dim)
-        # ], dim=-1)
-        
+    def reverse(self, pooled):
         x = pooled
-        
         x = self.unproj(x) + self.pe_rev[None,...]
         x = self.decode(x)
-        
-        # zero = self.zero()
-        # x = x + zero
-        
-        return x  # B, seq_len, embed_dim
+        return x

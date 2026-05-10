@@ -35,6 +35,7 @@ from .ae.mlp import RPN_AE as RPN_AE_MLP_Mixer
 from .ae.att import RPN_AE as RPN_AE_ATT
 from .ae.att2 import RPN_AE as RPN_AE_ATT2
 from .ae.att3 import RPN_AE as RPN_AE_ATT3
+from .gen.mlp import RPN_GEN
 
 
 RPN_AE_ = {
@@ -141,6 +142,9 @@ def masked_supcon(embd, ids, reco_ids, temp=0.1):
     pos_counts = pos_mask.sum(dim=1)
 
     valid = pos_counts > 0
+    if not valid.any():
+        return 0.0
+    
     loss = -(log_probs * pos_mask.float()).sum(dim=1)
 
     loss = loss[valid] / pos_counts[valid]
@@ -230,6 +234,8 @@ class ContrastiveRPN(nn.Module):
         seq_len: int = 100,
         embed_dim: int = 32,
         proj_dim: int = 64,
+        sem_dim: int = 64,
+        struct_dim: int = 64,
         rules: Optional[AlgebraicRuleSet] = None,
         temperature: float = 0.1,
         ae_type: str = "att",
@@ -241,6 +247,8 @@ class ContrastiveRPN(nn.Module):
         
         RPN_AE = RPN_AE_.get(ae_type, RPN_AE_NMLP)
         self.head = RPN_AE(self.embedder, TOKEN_TO_ID, ID_TO_ARITY, seq_len, embed_dim, proj_dim)
+        
+        self.gen = RPN_GEN(proj_dim, sem_dim, struct_dim)
         
         self.use_rules = rules
         self.rules = create_composite_ruleset(TOKEN_TO_ID, pad_token_id=TOKEN_TO_ID["__pad__"])
@@ -303,17 +311,9 @@ class ContrastiveRPN(nn.Module):
         z_a = self.head(x, token_ids)
         
         loss = 0.0 
-        
-        
-        ### denoiser (reconstruction via one-step conditional flow-matching)
-        noise = torch.randn_like(x)
-        t = torch.rand(x.shape[0], device=device)[:, None, None] * 0.5 # less info needed
-        
-        if not self.training:
-            t = t * 0.0
-        
-        x_noised = x * t + noise * (1 - t)
-        decoded = self.head.reverse(x_noised, z_a)
+                
+        ### pure reconstruction        
+        decoded = self.head.reverse(z_a)
         d_token_ids = self._decode_tokens(decoded)[0].to(device)
         scalar_mask = scalar_mask.float() * (d_token_ids == TOKEN_TO_ID["__scalar__"]).float()
                 
@@ -337,24 +337,23 @@ class ContrastiveRPN(nn.Module):
         denoise_perception_loss = self.criterion(recoded, z_a)
         loss = loss + denoise_perception_loss
         
-        ### symmetry-based contrastive loss (algebra)
-        if self.use_rules or not self.training:
-            r_token_ids, r_amp = self.rules.random_positive_view(token_ids, amp)
+        ### symmetry-based (algebra) generator
+        denoise_loss = 0.0
+        rule_loss = 0.0
+        r_token_ids, r_amp = self.rules.random_positive_view(token_ids, amp)
+        # apply random rewrite to each expression in the batch, encode with same head, compute contrastive loss
+        # truncate to what's available TODO check that this is properly padded and only padding is truncated
+        # r_token_ids = r_token_ids[:,:self.seq_len,:]
+        if r_token_ids.shape[1] == self.seq_len:
+            r_token_ids = r_token_ids.to(device)
+            r_amp = r_amp.to(device)                
+            z_positive = self.encode_token_batch(r_token_ids, r_amp)
+            # rule_loss = infonce_symmetric_loss(z_a, z_p, self.temperature)
             
-            # truncate to what's available TODO check that this is properly padded and only padding is truncated
-            # r_token_ids = r_token_ids[:,:self.seq_len,:]
-            if r_token_ids.shape[1] == self.seq_len:
-                r_token_ids = r_token_ids.to(device)
-                r_amp = r_amp.to(device)                
-                z_p = self.head(self.embedder(r_token_ids, r_amp), r_token_ids)
-                rule_loss = infonce_symmetric_loss(z_a, z_p, self.temperature)
-                if self.use_rules:
-                    loss = loss + rule_loss
-            else:
-                rule_loss = 0.0
-            # apply random rewrite to each expression in the batch, encode with same head, compute contrastive loss
-        else:
-            rule_loss = 0.0
+            denoise_loss, rule_loss = self.gen(z_a, z_positive)
+        
+        if self.use_rules:
+            loss = loss + denoise_loss
         
         ### GRPO-style syntax reward: sample multiple rollouts and encourage valid ones
         syntax_loss = self._grpo_syntax_loss(z_a, x, device)
@@ -364,7 +363,9 @@ class ContrastiveRPN(nn.Module):
         n = torch.sum(w)
         token_acc = torch.sum((token_ids == d_token_ids).float() * w) / n
         
-        return loss, token_acc, masked_supcon_loss, denoise_distortion_loss_token, denoise_distortion_loss_scalar, denoise_perception_loss, syntax_loss, rule_loss
+        return loss, token_acc, masked_supcon_loss, \
+            denoise_distortion_loss_token, denoise_distortion_loss_scalar, denoise_perception_loss, \
+            syntax_loss, denoise_loss, rule_loss
     
     def _grpo_syntax_loss(
         self,
@@ -484,7 +485,7 @@ class ContrastiveRPN(nn.Module):
         device = self.embedder.token_embed.device
         token_ids = token_ids.to(device)
         amp = amp.to(device)
-        return self.encode_token_batch(token_ids, amp)
+        return self.gen.semantic(self.encode_token_batch(token_ids, amp)) # semantics for diffusion
 
     def decode(self, encoded):
         noisy_pooled = torch.randn((encoded.shape[0], self.seq_len, self.embed_dim), device=encoded.device)
