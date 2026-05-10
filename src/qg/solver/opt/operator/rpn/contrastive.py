@@ -350,7 +350,7 @@ class ContrastiveRPN(nn.Module):
             z_positive = self.encode_token_batch(r_token_ids, r_amp)
             # rule_loss = infonce_symmetric_loss(z_a, z_p, self.temperature)
             
-            denoise_loss, rule_loss = self.gen(z_a, z_positive)
+            denoise_loss, rule_loss = self.gen.loss(z_a, z_positive)
         
         if self.use_rules:
             loss = loss + denoise_loss
