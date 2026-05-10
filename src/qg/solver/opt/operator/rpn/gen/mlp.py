@@ -88,8 +88,8 @@ class RPN_GEN(nn.Module):
         z_pos_hat = self.encode(x_pos_hat)
         
         return self.crit(x_hat, x) + self.crit(x_pos_hat, x_pos) \
-             + self.crit(z_hat, z) + self.crit(z_pos_hat, z_pos), \
-            self.crit(z_pos[...,:self.sem_dim], z[...,:self.sem_dim])
+             + self.crit(z_hat, z) + self.crit(z_pos_hat, z_p), \
+            self.crit(z_p[...,:self.sem_dim], z[...,:self.sem_dim])
 
     def semantic(self, x):
         return self.encode(x)[...,:self.sem_dim]
