@@ -599,15 +599,17 @@ class QwenContrastiveRPN(nn.Module):
         loss = lm_loss
  
         # ── 2. Masked SupCon loss ─────────────────────────────────────────
-        masked_supcon_loss = torch.tensor(0.0, device=device)
-        if self.training:
-            # Use pooled encoder hidden states per position
-            masked_supcon_loss = 0.1 * masked_supcon(
-                h_target,      # (..., d) embeddings
-                input_ids,     # original ids
-                d_token_ids,   # reconstructed ids
-                self.temperature,
-            )
+        # masked_supcon_loss = torch.tensor(0.0, device=device)
+        # if self.training:
+        #     # Use pooled encoder hidden states per position
+        #     masked_supcon_loss = 0.1 * masked_supcon(
+        #         h_target,      # (..., d) embeddings
+        #         input_ids,     # original ids
+        #         d_token_ids,   # reconstructed ids
+        #         self.temperature,
+        #     )
+        # not needed anymore
+        masked_supcon_loss = 0.0
         loss = loss + masked_supcon_loss
  
         # ── 3. Perception loss (cycle consistency: encode → decode → re-encode) ─
