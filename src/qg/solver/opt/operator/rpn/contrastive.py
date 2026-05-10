@@ -490,4 +490,9 @@ class ContrastiveRPN(nn.Module):
         decoded = self.head.reverse(noisy_pooled, encoded)
         return self._decode_tokens(decoded)
     
+    def sample(self, encoded):
+        z = self.gen.encode(encoded)
+        d = self.gen.gen(z)
+        return d
+    
     
