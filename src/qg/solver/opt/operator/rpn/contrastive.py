@@ -396,9 +396,7 @@ class ContrastiveRPN(nn.Module):
         reconstruction_errors = []
         
         for _ in range(num_samples):
-            # Sample noisy input and decode
-            noise = torch.randn_like(pooled)
-            decoded = self.head.reverse(noise, z_a)
+            decoded = self.head.reverse(z_a)
             
             # Get token predictions
             token_ids_sample, _ = self._decode_tokens(decoded)
