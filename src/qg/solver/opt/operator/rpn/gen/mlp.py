@@ -68,10 +68,12 @@ class RPN_GEN(nn.Module):
         y2[...,:self.sem_dim] = sem_x
         return x2, y2       
 
-    def loss(self, x, x_pos):
+    def loss(self, _x, _x_p):
+        x = _x.detach() # don't affect LLM part
+        x_p = _x_p.detach()
         
         z = self.encode(x)
-        z_p = self.encode(x_pos)
+        z_p = self.encode(x_p)
         
         t = torch.rand(x.shape[0], device=x.device)[:, None]
         
@@ -82,13 +84,13 @@ class RPN_GEN(nn.Module):
         z_n, z_p_n = self.swap(z_n, z_p_n) # swap semantic, no change expected
         
         x_hat = self.denoise(z_n)
-        x_pos_hat = self.denoise(z_p_n)
+        x_p_hat = self.denoise(z_p_n)
         
         z_hat = self.encode(x_hat)
-        z_pos_hat = self.encode(x_pos_hat)
+        z_p_hat = self.encode(x_pos_hat)
         
-        return self.crit(x_hat, x) + self.crit(x_pos_hat, x_pos) \
-             + self.crit(z_hat, z) + self.crit(z_pos_hat, z_p), \
+        return self.crit(x_hat, x) + self.crit(x_p_hat, x_p) \
+             + self.crit(z_hat, z) + self.crit(z_p_hat, z_p), \
             self.crit(z_p[...,:self.sem_dim], z[...,:self.sem_dim])
 
     def semantic(self, x):
