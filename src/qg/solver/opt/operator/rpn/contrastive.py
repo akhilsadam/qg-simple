@@ -317,9 +317,11 @@ class ContrastiveRPN(nn.Module):
         d_token_ids = self._decode_tokens(decoded)[0].to(device)
         scalar_mask = scalar_mask.float() * (d_token_ids == TOKEN_TO_ID["__scalar__"]).float()
                 
+        loss_relmse = self.criterion(decoded, x)         
         denoise_distortion_loss_token, denoise_distortion_loss_scalar = \
             self.masked_criterion(decoded, x, 
                                   key_padding_mask, scalar_mask)
+        denoise_distortion_loss_scalar = denoise_distortion_loss_scalar + loss_relmse
         loss = loss + denoise_distortion_loss_token + denoise_distortion_loss_scalar
 
         ### contrastive loss (simple) to avoid representation collapse among ids
@@ -395,8 +397,7 @@ class ContrastiveRPN(nn.Module):
         reconstruction_errors = []
         
         for _ in range(num_samples): # TODO remove loop, deterministic
-            decoded = self.head.reverse(self.gen.fm_gen(z_a))
-            # don't detach, so it provides MSE supervision as well
+            decoded = self.head.reverse(self.gen.fm_gen(z_a.detach()))
             
             # Get token predictions
             token_ids_sample, _ = self._decode_tokens(decoded)
