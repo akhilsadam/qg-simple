@@ -45,6 +45,8 @@ from .embeddings import (
 )
 from .algebra import create_composite_ruleset
 from .contrastive import ContrastiveRPN
+from .qwen_contrastive import QwenContrastiveRPN
+
 from .generator import RPNGenerator, create_vocab_from_embeddings
 
 
