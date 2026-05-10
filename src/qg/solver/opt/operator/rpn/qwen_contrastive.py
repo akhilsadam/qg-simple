@@ -107,6 +107,7 @@ class QwenEncoder(nn.Module):
     def __init__(self, qwen_model: nn.Module, hidden_size: int, proj_dim: int):
         super().__init__()
         self.qwen = qwen_model          # full CausalLM model (shared ref)
+        self.transformer = qwen_model.model.model
         # project from hidden_size → proj_dim
         self.proj = nn.Sequential(
             nn.Linear(hidden_size, proj_dim * 2),
@@ -120,7 +121,7 @@ class QwenEncoder(nn.Module):
         attention_mask: torch.Tensor,   # (B, L)
     ) -> torch.Tensor:                  # (B, proj_dim)
         # Use only the transformer body (no LM head), get hidden states
-        outputs = self.qwen.model(
+        outputs = self.transformer(
             input_ids=input_ids,
             attention_mask=attention_mask,
             output_hidden_states=False,
@@ -159,7 +160,10 @@ class QwenDecoder(nn.Module):
     ):
         super().__init__()
         self.qwen = qwen_model
+        self.transformer = qwen_model.model.model
+        self.embed_tokens = qwen_model.model.model.embed_tokens  # resolved once
         self.max_new_tokens = max_new_tokens
+        self.lm_head = qwen_model.model.lm_head
         # Map latent back to hidden_size for prefix injection
         self.latent_proj = nn.Sequential(
             nn.Linear(proj_dim, hidden_size * 2),
@@ -167,97 +171,88 @@ class QwenDecoder(nn.Module):
             nn.Linear(hidden_size * 2, hidden_size),
         )
  
-    def _make_inputs_embeds(
-        self,
-        z: torch.Tensor,            # (B, proj_dim)
-        input_ids: torch.Tensor,    # (B, L)
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Prepend a latent-derived virtual token to the embedded sequence.
-        Returns (inputs_embeds (B, 1+L, H), extended_attention_mask (B, 1+L)).
-        """
-        B = z.size(0)
-        # Project latent to hidden
-        latent_embed = self.latent_proj(z).unsqueeze(1)          # (B, 1, H)
-        # Embed the real tokens via the backbone embedding table
-        token_embeds = self.qwen.model.embed_tokens(input_ids)   # (B, L, H)
-        inputs_embeds = torch.cat([latent_embed, token_embeds], dim=1)  # (B, 1+L, H)
-        # Extend mask: the latent prefix is always "real"
-        prefix_mask = torch.ones(B, 1, device=z.device, dtype=torch.long)
-        return inputs_embeds
+    # def _make_inputs_embeds(
+    #     self,
+    #     z: torch.Tensor,            # (B, proj_dim)
+    #     input_ids: torch.Tensor,    # (B, L)
+    # ) -> Tuple[torch.Tensor, torch.Tensor]:
+    #     """
+    #     Prepend a latent-derived virtual token to the embedded sequence.
+    #     Returns (inputs_embeds (B, 1+L, H), extended_attention_mask (B, 1+L)).
+    #     """
+    #     B = z.size(0)
+    #     # Project latent to hidden
+    #     latent_embed = self.latent_proj(z).unsqueeze(1)          # (B, 1, H)
+    #     # Embed the real tokens via the backbone embedding table
+    #     token_embeds = self.embed_tokens(input_ids)   # (B, L, H)
+    #     inputs_embeds = torch.cat([latent_embed, token_embeds], dim=1)  # (B, 1+L, H)
+    #     # Extend mask: the latent prefix is always "real"
+    #     prefix_mask = torch.ones(B, 1, device=z.device, dtype=torch.long)
+    #     return inputs_embeds
  
-    def forward_teacher(
-        self,
-        z: torch.Tensor,            # (B, proj_dim)
-        input_ids: torch.Tensor,    # (B, L) — decoder input (BOS + tokens)
-        labels: torch.Tensor,       # (B, L) — shift handled inside
-        attention_mask: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Teacher-forced forward pass.
- 
-        Returns
-        -------
-        lm_loss   : scalar cross-entropy loss
-        logits    : (B, L, vocab_size) — for downstream accuracy computation
-        """
+    def forward_teacher(self, z, input_ids, labels, attention_mask):
         B, L = input_ids.shape
-        latent_embed = self.latent_proj(z).unsqueeze(1)                 # (B, 1, H)
-        token_embeds = self.qwen.model.embed_tokens(input_ids)          # (B, L, H)
+        latent_embed = self.latent_proj(z).unsqueeze(1)
+        token_embeds = self.embed_tokens(input_ids)
         inputs_embeds = torch.cat([latent_embed, token_embeds], dim=1)  # (B, 1+L, H)
- 
+
         prefix_mask = torch.ones(B, 1, device=z.device, dtype=attention_mask.dtype)
         full_mask = torch.cat([prefix_mask, attention_mask], dim=1)     # (B, 1+L)
- 
-        # Labels: ignore the latent-prefix position (-100), then real labels
-        ignore = torch.full((B, 1), -100, dtype=labels.dtype, device=labels.device)
-        full_labels = torch.cat([ignore, labels], dim=1)                # (B, 1+L)
- 
-        out = self.qwen(
+
+        out = self.transformer(
             inputs_embeds=inputs_embeds,
             attention_mask=full_mask,
-            labels=full_labels,
             use_cache=False,
         )
-        return out.loss, out.logits[:, 1:, :]  # strip prefix position from logits
+        logits = self.lm_head(out.last_hidden_state[:, 1:, :])  # strip prefix → (B, L, V)
+
+        # Causal shift: position i predicts position i+1
+        lm_loss = F.cross_entropy(
+            logits[:, :-1].reshape(-1, logits.size(-1)),
+            labels[:, 1:].reshape(-1),
+            ignore_index=-100,
+        )
+        return lm_loss, logits
  
     @torch.no_grad()
-    def generate(
-        self,
-        z: torch.Tensor,            # (B, proj_dim)
-        bos_id: int,
-        eos_id: int,
-    ) -> torch.Tensor:              # (B, max_new_tokens) token ids
-        """Greedy generation conditioned on latent z."""
+    def generate(self, z, bos_id, eos_id):
         B = z.size(0)
         device = z.device
-        latent_embed = self.latent_proj(z).unsqueeze(1)  # (B, 1, H)
- 
+        latent_embed = self.latent_proj(z).unsqueeze(1)   # (B, 1, H)
+
         cur_ids = torch.full((B, 1), bos_id, dtype=torch.long, device=device)
         generated = []
         past = None
- 
+        past_len = 0  # tracks how many positions are already in the KV cache
+
         for step in range(self.max_new_tokens):
-            token_embeds = self.qwen.model.embed_tokens(cur_ids)  # (B, 1, H)
+            token_embeds = self.embed_tokens(cur_ids)      # (B, 1, H)
+
             if step == 0:
-                # First step: prepend latent
-                inputs_embeds = torch.cat([latent_embed, token_embeds], dim=1)
+                inputs_embeds = torch.cat([latent_embed, token_embeds], dim=1)  # (B, 2, H)
+                attention_mask = torch.ones(B, 2, device=device, dtype=torch.long)
             else:
-                inputs_embeds = token_embeds
- 
-            out = self.qwen(
+                inputs_embeds = token_embeds               # (B, 1, H)
+                attention_mask = torch.ones(B, past_len + 1, device=device, dtype=torch.long)
+
+            out = self.transformer(
                 inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask,
                 past_key_values=past,
                 use_cache=True,
             )
             past = out.past_key_values
-            next_id = out.logits[:, -1, :].argmax(dim=-1, keepdim=True)  # (B, 1)
+            past_len = past[0][0].shape[2]                 # key shape: (B, heads, seq, head_dim)
+
+            hidden = out.last_hidden_state                 # (B, T, H)
+            next_id = self.lm_head(hidden[:, -1, :]).argmax(dim=-1, keepdim=True)  # (B, 1)
             generated.append(next_id)
             cur_ids = next_id
+
             if (next_id.squeeze(-1) == eos_id).all():
                 break
- 
-        return torch.cat(generated, dim=1)  # (B, T)
+
+        return torch.cat(generated, dim=1)                 # (B, T)
  
  
 # ---------------------------------------------------------------------------
