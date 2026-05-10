@@ -395,7 +395,7 @@ class ContrastiveRPN(nn.Module):
         reconstruction_errors = []
         
         for _ in range(num_samples): # TODO remove loop, deterministic
-            decoded = self.head.reverse(self.gen.fm_gen(z_a.detach()))
+            decoded = self.head.reverse(z_a)
             
             # Get token predictions
             token_ids_sample, _ = self._decode_tokens(decoded)
