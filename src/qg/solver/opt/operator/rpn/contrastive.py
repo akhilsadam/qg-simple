@@ -486,8 +486,7 @@ class ContrastiveRPN(nn.Module):
         return self.gen.semantic(self.encode_token_batch(token_ids, amp)) # semantics for diffusion
 
     def decode(self, encoded):
-        noisy_pooled = torch.randn((encoded.shape[0], self.seq_len, self.embed_dim), device=encoded.device)
-        decoded = self.head.reverse(noisy_pooled, encoded)
+        decoded = self.head.reverse(encoded)
         return self._decode_tokens(decoded)
     
     def sample(self, encoded):
