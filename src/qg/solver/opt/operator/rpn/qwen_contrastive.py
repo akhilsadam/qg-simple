@@ -241,7 +241,7 @@ class QwenDecoder(nn.Module):
                 use_cache=True,
             )
             past = out.past_key_values
-            past_len = past[0][0].shape[2]                 # key shape: (B, heads, seq, head_dim)
+            past_len = past.get_seq_length()                 # key shape: (B, heads, seq, head_dim)
 
             hidden = out.last_hidden_state                 # (B, T, H)
             next_id = self.lm_head(hidden[:, -1, :]).argmax(dim=-1, keepdim=True)  # (B, 1)
@@ -594,7 +594,7 @@ class QwenContrastiveRPN(nn.Module):
         #     )
  
         # loss = loss + denoise_distortion_loss_tk + denoise_distortion_loss_sc + lm_loss
-        denoise_distortion_loss_tk = 0.0
+        denoise_distortion_loss_tk = lm_loss
         denoise_distortion_loss_sc = 0.0
         loss = lm_loss
  
