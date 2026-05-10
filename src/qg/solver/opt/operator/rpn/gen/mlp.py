@@ -87,7 +87,7 @@ class RPN_GEN(nn.Module):
         x_p_hat = self.denoise(z_p_n)
         
         z_hat = self.encode(x_hat)
-        z_p_hat = self.encode(x_pos_hat)
+        z_p_hat = self.encode(x_p_hat)
         
         return self.crit(x_hat, x) + self.crit(x_p_hat, x_p) \
              + self.crit(z_hat, z) + self.crit(z_p_hat, z_p), \
