@@ -394,7 +394,7 @@ class ContrastiveRPN(nn.Module):
         
         # Sample multiple decoded sequences
         validity_scores = []
-        reconstruction_errors = []
+        # reconstruction_errors = []
         
         for _ in range(num_samples): # TODO remove loop, deterministic
             decoded = self.head.reverse(self.gen.fm_gen(z_a.detach()))
@@ -406,13 +406,13 @@ class ContrastiveRPN(nn.Module):
             validity = validate_rpn_syntax(token_ids_sample)
             validity_scores.append(validity)
             
-            # Reconstruction error (lower is better)
-            recon_error = self.criterion(decoded, pooled)
-            reconstruction_errors.append(recon_error)
+            # # Reconstruction error (lower is better)
+            # recon_error = self.criterion(decoded, pooled)
+            # reconstruction_errors.append(recon_error)
         
         # Stack validity scores: (num_samples, B)
         validity_scores = torch.stack(validity_scores, dim=0)  # (num_samples, B)
-        reconstruction_errors = torch.stack(reconstruction_errors, dim=0)  # (num_samples,)
+        # reconstruction_errors = torch.stack(reconstruction_errors, dim=0)  # (num_samples,)
         
         # Compute relative advantages (GRPO style)
         # Higher validity → lower loss
@@ -421,7 +421,8 @@ class ContrastiveRPN(nn.Module):
         
         # Weight samples by validity advantage: encourage high-validity samples
         # and penalize low-validity ones (relative to batch mean)
-        weighted_errors = reconstruction_errors.unsqueeze(-1) * (1.0 - validity_advantage)
+        # weighted_errors = reconstruction_errors.unsqueeze(-1) * (1.0 - validity_advantage)
+        weighted_errors = (1.0 - validity_advantage)
         
         # Average over samples and batch
         syntax_loss = weighted_errors.mean()
