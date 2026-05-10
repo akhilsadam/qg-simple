@@ -52,7 +52,7 @@ class RPN_GEN(nn.Module):
         x_n = torch.cat([x[...,:self.sem_dim], struct], dim=-1)
         return x_n
     
-    def denoise(self, x, t):
+    def denoise(self, x):
         return self.decode(self._gen(x))
    
     def mix(self, x: torch.Tensor, n: torch.Tensor,
