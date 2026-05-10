@@ -597,7 +597,20 @@ class QwenContrastiveRPN(nn.Module):
         denoise_distortion_loss_tk = lm_loss
         denoise_distortion_loss_sc = 0.0
         loss = lm_loss
- 
+        
+        d_token_ids_shifted = logits[:, :-1].argmax(dim=-1)  # (B, L-1)
+        target_ids_shifted = input_ids[:, 1:]                # (B, L-1)
+        pad_mask_shifted = key_padding_mask[:, 1:]           # (B, L-1)
+
+        w = (~pad_mask_shifted).float() * 0.97 + pad_mask_shifted.float() * 0.03
+        n = w.sum()
+        token_acc = ((target_ids_shifted == d_token_ids_shifted).float() * w).sum() / n
+
+        # For perception loss, use the shifted predictions to re-encode
+        # Pad d_token_ids back to length L for the encoder (prepend BOS)
+        bos_col = input_ids[:, :1]  # (B, 1) — keep original BOS
+        d_token_ids = torch.cat([bos_col, d_token_ids_shifted], dim=1)  # (B, L)
+        
         # ── 2. Masked SupCon loss ─────────────────────────────────────────
         # masked_supcon_loss = torch.tensor(0.0, device=device)
         # if self.training:
@@ -614,7 +627,7 @@ class QwenContrastiveRPN(nn.Module):
  
         # ── 3. Perception loss (cycle consistency: encode → decode → re-encode) ─
         z_recoded = self.encoder(d_token_ids, attention_mask)   # (B, proj_dim)
-        denoise_perception_loss = self._rel_mse(z_recoded, z_a)
+        denoise_perception_loss = self._rel_mse(z_recoded, z_a.detach())
         loss = loss + denoise_perception_loss
  
         # ── 4. Syntax loss (GRPO-style) ───────────────────────────────────
@@ -668,11 +681,6 @@ class QwenContrastiveRPN(nn.Module):
  
         if self.use_rules:
             loss = loss + denoise_loss
- 
-        # ── 6. Token accuracy ─────────────────────────────────────────────
-        w = (~key_padding_mask).float() * 0.97 + key_padding_mask.float() * 0.03
-        n = w.sum()
-        token_acc = ((input_ids == d_token_ids).float() * w).sum() / n
  
         return (
             loss,
