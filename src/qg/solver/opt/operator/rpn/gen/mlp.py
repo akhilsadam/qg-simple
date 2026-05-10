@@ -99,4 +99,11 @@ class RPN_GEN(nn.Module):
     def gen(self, x):
         n = self.noise(x)
         return self.denoise(n)
+    
+    def fm_gen(self, x):
+        t = torch.rand(x.shape[0], device=x.device)[:, None]
+        z = self.encode(x)    
+        n = self.noise(z)
+        z_n = self.mix(z, n, t)
+        return self.denoise(z_n)
         

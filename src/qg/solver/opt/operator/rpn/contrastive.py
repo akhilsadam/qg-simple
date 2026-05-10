@@ -340,20 +340,19 @@ class ContrastiveRPN(nn.Module):
         ### symmetry-based (algebra) generator
         denoise_loss = 0.0
         rule_loss = 0.0
-        r_token_ids, r_amp = self.rules.random_positive_view(token_ids, amp)
-        # apply random rewrite to each expression in the batch, encode with same head, compute contrastive loss
-        # truncate to what's available TODO check that this is properly padded and only padding is truncated
-        # r_token_ids = r_token_ids[:,:self.seq_len,:]
-        if r_token_ids.shape[1] == self.seq_len:
-            r_token_ids = r_token_ids.to(device)
-            r_amp = r_amp.to(device)                
-            z_positive = self.encode_token_batch(r_token_ids, r_amp)
-            # rule_loss = infonce_symmetric_loss(z_a, z_p, self.temperature)
-            
-            denoise_loss, rule_loss = self.gen.loss(z_a, z_positive)
-        
-        if self.use_rules:
-            loss = loss + denoise_loss
+        if self.use_rules or not self.training:
+            r_token_ids, r_amp = self.rules.random_positive_view(token_ids, amp)
+            # apply random rewrite to each expression in the batch, encode with same head, compute contrastive loss
+            # truncate to what's available TODO check that this is properly padded and only padding is truncated
+            # r_token_ids = r_token_ids[:,:self.seq_len,:]
+            if r_token_ids.shape[1] == self.seq_len:
+                r_token_ids = r_token_ids.to(device)
+                r_amp = r_amp.to(device)                
+                z_positive = self.encode_token_batch(r_token_ids, r_amp)
+                # rule_loss = infonce_symmetric_loss(z_a, z_p, self.temperature)
+                
+                denoise_loss, rule_loss = self.gen.loss(z_a, z_positive)
+                loss = loss + denoise_loss
         
         ### GRPO-style syntax reward: sample multiple rollouts and encourage valid ones
         syntax_loss = self._grpo_syntax_loss(z_a, x, device)
@@ -396,7 +395,7 @@ class ContrastiveRPN(nn.Module):
         reconstruction_errors = []
         
         for _ in range(num_samples): # TODO remove loop, deterministic
-            decoded = self.head.reverse(z_a)
+            decoded = self.head.reverse(self.gen.fm_gen(z_a.detach()))
             
             # Get token predictions
             token_ids_sample, _ = self._decode_tokens(decoded)
