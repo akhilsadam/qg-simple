@@ -352,7 +352,7 @@ class ContrastiveRPN(nn.Module):
                 # rule_loss = infonce_symmetric_loss(z_a, z_p, self.temperature)
                 
                 denoise_loss, rule_loss = self.gen.loss(z_a, z_positive)
-                loss = loss + denoise_loss
+                loss = loss + denoise_loss + rule_loss
         
         ### GRPO-style syntax reward: sample multiple rollouts and encourage valid ones
         syntax_loss = self._grpo_syntax_loss(z_a, x, device)
