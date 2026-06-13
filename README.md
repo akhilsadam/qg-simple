@@ -1,3 +1,8 @@
+# Autodifferentiable QG code
+- an evolving version of the solver code for our IEEE Oceans & JAMES papers
+- see a [simple, quickstart version instead](https://github.com/akhilsadam/qg-simple)
+- see the (limited) [official archival version](https://zenodo.org/records/17282193) or a [GitHub mirror instead](https://github.com/ananthu545/qg-2d)
+
 ## Quickstart
 - First, clone or fork the `package-stable` branch.
 - Create an environment (with `uv` from `pip install uv`).
