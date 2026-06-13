@@ -1,5 +1,5 @@
 # Autodifferentiable QG code
-- an evolving version of the solver code for our IEEE Oceans & JAMES papers
+- an evolving version of the solver code for our [IEEE Oceans](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=11245082) & [JAMES](https://doi.org/10.1029/2025MS005324) papers
 - see a [simple, quickstart version instead](https://github.com/akhilsadam/qg-simple)
 - see the (limited) [official archival version](https://zenodo.org/records/17282193) or a [GitHub mirror instead](https://github.com/ananthu545/qg-2d)
 
