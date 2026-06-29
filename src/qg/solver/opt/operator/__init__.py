@@ -3,25 +3,10 @@ from qg.solver.util import _Math
 from qg.solver.opt.operator.jacobian import jacobian_pq
 from qg.solver.opt.operator.obstacle import solve_mask, brinkman_no_slip_penalty, brinkman_friction_slip_penalty, brinkman_friction_slip_w_pot_penalty
 from qg.solver.opt.operator.vortex import vortex_stretching
-# from qg.solver.opt.operator.pde_rpn import compile_pde_rpn
-from qg.solver.opt.operator.rpn import compile_pde_rpn
-
-
-
-def _compile_custom_pde_if_present(params, derivative):
-    pde_rpn = getattr(params, "rpn", None)
-    if not pde_rpn:
-        return None
-    return compile_pde_rpn(pde_rpn, derivative, params)
 
 def define_explicit_operator(param, grid, derivative, logger, args, sources, **kwargs):
     patches = []
     split_patches = []
-    
-    compiled_pde = _compile_custom_pde_if_present(param.pde, derivative)
-
-    if compiled_pde is not None:
-        logger.info(f"Using custom PDE RPN: {' '.join(compiled_pde.tokens)}")
     
     if param.bc is not None:
         bc = lambda op, state: param.bc(state, grid, derivative)
@@ -52,11 +37,7 @@ def define_explicit_operator(param, grid, derivative, logger, args, sources, **k
 
     patches.extend(sources)
 
-    if compiled_pde is not None:
-        if compiled_pde.nonlinear_source is not None:
-            patches.append(lambda op, state: compiled_pde.nonlinear_source(state))
-    else:
-        patches.append(jacobian_pq)
+    patches.append(jacobian_pq)
 
     if param.integrator.split_bc and len(split_patches)==0:
         logger.warn('No boundary condition or operators to split; ignoring split_bc')
@@ -91,12 +72,7 @@ class ImplicitLinearOperator(_Math):
         self.derivative = derivative
         self.params = params
         self.device = grid.device
-        compiled_pde = _compile_custom_pde_if_present(self.params, derivative)
-
-        if compiled_pde is not None and compiled_pde.linear_operator is not None:
-            value = compiled_pde.linear_operator
-        else:
-            value = self._linear_term()
+        value = self._linear_term()
 
         super().__init__(value=value) # precompute
 

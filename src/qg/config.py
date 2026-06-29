@@ -46,7 +46,6 @@ class PDEConfig:
     closure_function: Optional[str]
     closure: float
     width: Optional[float]
-    rpn: Optional[Union[str, List[str]]]
 
 @dataclass
 class ICConfig:
