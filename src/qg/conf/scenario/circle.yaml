@@ -1,0 +1,41 @@
+# @package _global_
+# Flow past cylinder scenario with sponge boundaries and obstacle
+
+qg:
+  grid:
+    Nx: 512
+    Ny: 512
+    Lx: 6.28  # 8*pi
+    Ly: 6.28  # 8*pi
+  
+  time:
+    dt: 0.001
+    T: 100
+    save_rate: 500
+  
+  pde:
+    nu: 5e-3  # RE 200
+    penalty: 1.25  # 1.25 * dt (Brinkman penalty for cylinder)
+    friction: 0.001
+  
+  ic:
+    function: randn
+    energy: 0.01
+    wavenumbers: [10.0, 32.0]
+    seed: 86  # Will be overridden by qg.seed
+    n_batch: 1
+
+  mask:
+    function: circular
+    r: 0.628318530717959  # pi/5
+    x_center: 0.25  # Position cylinder at 1/4 domain
+    y_center: 0.5
+  
+  forcing:
+    function: unscaled_cosine
+    A: -0.1
+    B: 2
+    C: 0
+    D: 0.1
+    E: 2
+    F: 0

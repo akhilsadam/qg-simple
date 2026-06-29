@@ -5,13 +5,13 @@ import numpy as np
 
 from tqdm import tqdm
 from qg.solver.opt.basis import _state, to_spectral, to_physical
-from qg.solver.integrator.imex import CN2, AB2
 
 import qg.config as vc
 
 from qg.solver.grid.cartesian import CartesianGrid
 from qg.solver.opt.derivative import Derivative
 from qg.solver.opt.operator import ImplicitLinearOperator, define_explicit_operator
+from qg.solver.integrator import Integrator
 
 from qg.solver.opt.operator.jacobian import advection_uv
 
@@ -44,31 +44,48 @@ class QG():
                                         args=(param.time.dt, self.grid, self.derivative, param.pde),
                                         sources=explicit_sources) 
         
+        self.flow = param.flow # puv bc
+        
+        self.int = Integrator(param.integrator)
+        
         self.dt = param.time.dt
+        
+        # Select step implementation based on split_bc at init time
+        if param.integrator.split_bc:
+            step_impl = self._step_with_split
+        else:
+            step_impl = self._step_without_split
+        
+        # try:
+        #     self.step = torch.compile(step_impl)
+        # except Exception as e:
+        #     self.logger.warn(f"Failed to compile stepper with exception {e}")
+        self.step = step_impl
+        
         self.logger.info(f"Initialized QG model with {self.grid.Nx}x{self.grid.Ny} grid on {self.grid.device}")
 
-    def step(self, state):
-        # state.dt = self.dt # Not sure if this is necessary, need to think about adaptive time stepping TODO
+    def _step_with_split(self, state):
+        state.qh = self.int.ex(state.qh, state, state.dt, self.operator.split_source)
+        state.qh = self.int.imex(state.qh, state, state.dt, self.operator.source, self.implicit_linear_operator)
+        state.update_t()
 
-        # vorticity step
-        explicit_source = AB2(self.operator.source(state)) # source term
-        state.qh = CN2(state.qh, explicit_source, state.dt, self.implicit_linear_operator) # Crank-Nicolson        
-        
+    def _step_without_split(self, state):
+        state.qh = self.int.imex(state.qh, state, state.dt, self.operator.source, self.implicit_linear_operator)
+        state.update_t()
+   
         # potential flow velocity step
         # state.x_adv, state.y_adv = advection_uv(self.operator, state)
         
         # print(torch.max(to_physical(explicit_source)), torch.min(to_physical(explicit_source)))
         # print(torch.max(to_physical(state.qh)), torch.min(to_physical(state.qh)))
         
-        # update fields
-        state.update_uv()
         # state.update_potential_flow() # also potential_flow
-        state.update_t()
+        # state.dt = self.dt # Not sure if this is necessary, need to think about adaptive time stepping TODO
 
     def init(self):  
-        return _state(self.param.ic(self.grid, self.derivative), self.dt, self.derivative) # In spectral space
+        return _state(self.param.ic(self.grid, self.derivative), self.dt, self.flow, self.derivative) # In spectral space
           
-    def _run(self, prof=None):
+    def _run(self, prof=None, nan_check=False, lim_check=-1):
         save_rate = self.param.time.save_rate
         steps = int(self.param.time.T / self.dt)  # Number of time steps
         
@@ -88,24 +105,33 @@ class QG():
             
             if prof is not None:
                 prof.step()  # Step the profiler
-        
-        
+                
+            if nan_check and torch.isnan(state.qh).any():
+                self.logger.warning(f"NaN detected at iteration {it}")
+                return solution[:,:save_index,...]  # Return what we have so far
+                break
+            
+            if lim_check > 0 and torch.abs(state.qh.real).mean() > lim_check:  # Arbitrary large value
+                self.logger.warning(f"Value overflow detected at iteration {it}")
+                return solution[:,:save_index,...]  # Return what we have so far
+                break
+            
         solution[:, -1, ...] = state.out() # B T C H W
                 
         return solution
     
-    def solve(self, save_path, name='DNS', clamp=0.3): # for direct user call
+    def solve(self, save_path, name='DNS', clamp=0.3, nan_check=False, lim_check=-1): # for direct user call
         if hasattr(self.param, 'profile') and self.param.profile:
             self.logger.info(f"Profiling enabled.")
             from torch.profiler import profile, ProfilerActivity, record_function
             with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],record_shapes=True, with_stack=True) as prof:
                 with record_function("_run"):
-                    solution_torch = self._run(prof)            
+                    solution_torch = self._run(prof, nan_check=nan_check, lim_check=lim_check)            
             print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=-1))
             prof.export_chrome_trace(os.path.join(save_path, f'{name}_trace.json'))
             self.logger.info(f"Profile trace saved at {os.path.join(save_path, f'{name}_trace.json')}")
         else:
-            solution_torch = self._run()
+            solution_torch = self._run(nan_check=nan_check, lim_check=lim_check)
         solution = solution_torch.cpu().numpy()
         self.logger.info(f"Simulation complete.")
             

@@ -26,6 +26,14 @@ class TimeConfig:
 
 
 @dataclass
+class IntegratorConfig:
+    """Integrator selection"""
+    lms: str
+    ex: str
+    imex: str
+    split_bc: bool
+    
+@dataclass
 class PDEConfig:
     """PDE physics parameters."""
     mu: float
@@ -38,7 +46,7 @@ class PDEConfig:
     closure_function: Optional[str]
     closure: float
     width: Optional[float]
-
+    rpn: Optional[Union[str, List[str]]]
 
 @dataclass
 class ICConfig:
@@ -52,14 +60,18 @@ class ICConfig:
 
 @dataclass
 class BCConfig:
-    """Boundary conditions configuration."""
+    """q / boundary conditions configuration."""
     function: str
-    inlet_velocity: float
     width: float
     _min: float
     _max: float
     sponge: float
 
+@dataclass
+class FlowConfig:
+    """State (puv) conditions config"""
+    function: str
+    inlet_velocity: float
 
 @dataclass
 class ForcingConfig:
@@ -89,9 +101,11 @@ class QGConfig:
     seed: int
     grid: GridConfig
     time: TimeConfig
+    integrator: IntegratorConfig
     pde: PDEConfig
     ic: ICConfig
     bc: BCConfig
+    flow: FlowConfig
     forcing: Optional[ForcingConfig]
     mask: Optional[MaskConfig]
     fps: int
@@ -124,21 +138,24 @@ class validate():
         
         self.time = param.time
         self.pde = param.pde
+        self.integrator = param.integrator
         self.grid = OmegaConf.to_container(param.grid, resolve=True)
         self.ic = OmegaConf.to_container(ic_config, resolve=True)
         self.bc = OmegaConf.to_container(param.bc, resolve=True) if param.bc is not None else None
+        self.flow = OmegaConf.to_container(param.flow, resolve=True) if param.flow is not None else None
         self.forcing = OmegaConf.to_container(param.forcing, resolve=True) if param.forcing is not None else None
         self.mask = OmegaConf.to_container(param.mask, resolve=True) if param.mask is not None else None
 
     def solve(self):
         # imports here to avoid import on load
         from qg._input.sources.ic import solve_ic
-        from qg._input.sources.bc import solve_bc
+        from qg._input.sources.bc import solve_bc, solve_flow
         from qg._input.sources.forcing import solve_forcing
         from qg._input.mask.mask import solve_mask
         
         self.ic = solve_ic(self.ic)
         self.bc = solve_bc(self.bc)
+        self.flow = solve_flow(self.flow)
         self.mask = solve_mask(self.mask)
         self.forcing = solve_forcing(self.forcing)
         

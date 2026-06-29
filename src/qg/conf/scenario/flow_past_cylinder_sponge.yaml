@@ -23,17 +23,19 @@ qg:
   
   bc:
     function: const-outlet-vorticity-rtd  # Flow past cylinder BC with diffuse sponge
-    inlet_velocity: 2.0  # Inflow velocity
     width: 0.025  # Sponge width (x_left=0.025, x_right=1-0.025=0.975)
     _min: 0.0
     _max: 1.0
     sponge: 1.25  # 1.25 * dt (boundary sponging)
   
+  flow:
+    function: const-x-flow
+    inlet_velocity: 2.0
+
   mask:
     function: circular
     r: 0.628318530717959  # pi/5
     x_center: 0.25  # Position cylinder at 1/4 domain
     y_center: 0.5
-    tol: 1e-3
   
   forcing: null  # No forcing

@@ -6,7 +6,7 @@ from functools import lru_cache
 
 class Sponge:
     @staticmethod
-    def vorticity_sponge(state, derivative, sponge, mask, uh, vh):
+    def vorticity_sponge(state, derivative, sponge, mask):
         if sponge <= 0:
             print("Warning: sponge must be positive for sponge layer to work effectively.")
             return 0
@@ -18,42 +18,25 @@ class Sponge:
         outlet_vorticity_sponge = -1 * to_spectral(_ramp * to_physical(state.qh)) / _eta
         return outlet_vorticity_sponge
     
-    @staticmethod
-    def diffuse_sponge(state, derivative, sponge, masks, uh, vh):
-        if sponge <= 0:
-            print("Warning: sponge must be positive for sponge layer to work effectively.")
-            return 0
+    # @staticmethod
+    # def diffuse_sponge(state, derivative, sponge, masks):
+    #     if sponge <= 0:
+    #         print("Warning: sponge must be positive for sponge layer to work effectively.")
+    #         return 0
         
-        _outlet_v1, _outlet_v2, _outlet_v1_ramp = masks
-        _eta = sponge * state.dt
+    #     _outlet_v1, _outlet_v2, _outlet_v1_ramp = masks
+    #     _eta = sponge * state.dt
         
-        ### velocity / closed bc
-        masked_vh_delta = to_spectral(_outlet_v2 * to_physical(state.vh - vh)) 
-        masked_uh_delta = to_spectral(_outlet_v2 * to_physical(state.uh - uh))
-        outlet_velocity_sponge = (derivative.dx * masked_vh_delta - derivative.dy * masked_uh_delta) / _eta
+    #     ### velocity / closed bc
+    #     masked_vh_delta = to_spectral(_outlet_v2 * to_physical(state.vh - state.vh)) 
+    #     masked_uh_delta = to_spectral(_outlet_v2 * to_physical(state.uh - uh))
+    #     outlet_velocity_sponge = (derivative.dx * masked_vh_delta - derivative.dy * masked_uh_delta) / _eta
         
-        ### diffusion
-        outlet_diffusion = 0.1 * derivative.laplacian * to_spectral(_outlet_v1_ramp * to_physical(state.qh))
+    #     ### diffusion
+    #     outlet_diffusion = 0.1 * derivative.laplacian * to_spectral(_outlet_v1_ramp * to_physical(state.qh))
             
-        return outlet_diffusion + outlet_velocity_sponge # outlet_vorticity_sponge + 
+    #     return outlet_diffusion + outlet_velocity_sponge # outlet_vorticity_sponge + 
     
-
-class Flow:
-    @staticmethod
-    def const_x_flow(state, inlet_velocity):
-        
-        @lru_cache(maxsize=1)
-        def base_flow():
-            flow_uh = torch.zeros_like(state.uh)
-            flow_uh[...,0,0] = inlet_velocity
-            flow_vh = flow_uh * 0.0
-            return flow_uh, flow_vh
-        
-        flow_uh, flow_vh = base_flow()
-        state.uh[...,0,0] = inlet_velocity
-        state.vh[...,0,0] = 0.0
-        
-        return flow_uh, flow_vh
 
 class Region:
     
@@ -163,46 +146,57 @@ class Region:
 ### 
 class BC:
     @staticmethod
-    def const_outlet_vorticity_r(state, grid, derivative, 
-                        inlet_velocity=1.0, _min=0.0, _max=1.0, sponge=4.0,
+    def const_outlet_vorticity_r(state, grid, derivative, _min=0.0, _max=1.0, sponge=4.0,
                         width = 0.05,                 
                         **kwargs):
         return Sponge.vorticity_sponge(state, derivative, sponge,
-                                    Region.outlet_mask_r(grid, _min, _max, width, type='single'),
-                                    *Flow.const_x_flow(state, inlet_velocity))
+                                    (Region.outlet_mask_r(grid, _min, _max, width, type='single') > 0))
         
 
     @staticmethod
-    def const_outlet_vorticity_rtd(state, grid, derivative, 
-                        inlet_velocity=1.0, _min=0.0, _max=1.0, sponge=4.0,
+    def const_outlet_vorticity_rtd(state, grid, derivative, _min=0.0, _max=1.0, sponge=4.0,
                         width = 0.05,                 
                         **kwargs):
         return Sponge.vorticity_sponge(state, derivative, sponge,
-                                       Region.outlet_mask_rtd(grid, _min, _max, width, type='single'),
-                                       *Flow.const_x_flow(state, inlet_velocity))
+                                       (Region.outlet_mask_rtd(grid, _min, _max, width, type='single') > 0))
+
     @staticmethod
-    def const_outlet_diffuse_r(state, grid, derivative, 
-                        inlet_velocity=1.0, _min=0.0, _max=1.0, sponge=4.0,
+    def ramp_outlet_vorticity_r(state, grid, derivative, _min=0.0, _max=1.0, sponge=4.0,
                         width = 0.05,                 
                         **kwargs):
-        return Sponge.diffuse_sponge(state, derivative, sponge,
-                                    Region.outlet_mask_r(grid, _min, _max, width, type='double'),
-                                    *Flow.const_x_flow(state, inlet_velocity))
+        return Sponge.vorticity_sponge(state, derivative, sponge,
+                                    Region.outlet_mask_r(grid, _min, _max, width, type='single'))
         
 
     @staticmethod
-    def const_outlet_diffuse_rtd(state, grid, derivative, 
-                        inlet_velocity=1.0, _min=0.0, _max=1.0, sponge=4.0,
+    def ramp_outlet_vorticity_rtd(state, grid, derivative, _min=0.0, _max=1.0, sponge=4.0,
                         width = 0.05,                 
                         **kwargs):
-        return Sponge.diffuse_sponge(state, derivative, sponge,
-                                       Region.outlet_mask_rtd(grid, _min, _max, width, type='triple'),
-                                       *Flow.const_x_flow(state, inlet_velocity))
+        return Sponge.vorticity_sponge(state, derivative, sponge,
+                                       Region.outlet_mask_rtd(grid, _min, _max, width, type='single'))
 
     @staticmethod
     def none(state, grid, derivative,                  
                         **kwargs):
         return 0
+
+###
+
+class Flow:
+    @staticmethod
+    def const_x_flow(state, inlet_velocity=1.0, **kwargs):
+        
+        @lru_cache(maxsize=1)
+        def base_flow():
+            flow_uh = torch.zeros_like(state._uh)
+            flow_uh[...,0,0] = inlet_velocity
+            flow_vh = flow_uh * 0.0
+            return flow_uh, flow_vh
+        
+        # inplace modification
+        flow_uh, flow_vh = base_flow()
+        state._uh[...,0,0] = inlet_velocity
+        state._vh[...,0,0] = 0.0
 
 ####################################################################################################
 
@@ -212,11 +206,20 @@ bc_library = {
     'periodic': BC.none,
     'const-outlet-vorticity-r': BC.const_outlet_vorticity_r,
     'const-outlet-vorticity-rtd': BC.const_outlet_vorticity_rtd,
-    'const-outlet-diffuse-r': BC.const_outlet_diffuse_r,
-    'const-outlet-diffuse-rtd': BC.const_outlet_diffuse_rtd,
+    'ramp-outlet-vorticity-r': BC.ramp_outlet_vorticity_r,
+    'ramp-outlet-vorticity-rtd': BC.ramp_outlet_vorticity_rtd,
+}
+
+flow_library = {
+    'const-x-flow': Flow.const_x_flow
 }
 
 def solve_bc(_bc):
     if _bc is None or not isinstance(_bc, dict) or 'function' not in _bc or _bc['function'] not in bc_library:
         return _bc
     return lambda *args: bc_library[_bc['function']](*args, **_bc)
+
+def solve_flow(_bc):
+    if _bc is None or not isinstance(_bc, dict) or 'function' not in _bc or _bc['function'] not in flow_library:
+        return lambda *args: None # no-op function
+    return lambda *args: flow_library[_bc['function']](*args, **_bc)

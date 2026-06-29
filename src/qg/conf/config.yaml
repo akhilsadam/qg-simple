@@ -18,6 +18,12 @@ qg:
     T: 200
     save_rate: 1000
   
+  integrator:
+    lms: AB2
+    ex: Euler
+    imex: CN2
+    split_bc: false
+    
   pde:
     mu: 0.0
     nu: 1.025e-04
@@ -42,6 +48,8 @@ qg:
     _min: 0.0
     _max: 1.0
     sponge: 0.0
+
+  flow: null
   
   forcing: null
   

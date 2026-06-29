@@ -1,0 +1,42 @@
+# @package _global_
+# smooth cylinder
+
+qg:
+  grid:
+    Nx: 256
+    Ny: 256
+    Lx: 12.566370614359172  # 4*pi
+    Ly: 12.566370614359172  # 4*pi
+
+  time:
+    dt: 0.001 # 0.0005
+    T: 24 #60
+    save_rate: 200 # 1024
+  
+  pde:
+    nu: 5e-4
+    friction: 0.0
+    penalty: 1.25
+  
+  ic:
+    function: randn
+    energy: 0.0 #5
+    wavenumbers: [3.0, 5.0]
+  
+  mask:
+    function: circular
+    r: 6  # pi/5
+    x_center: 0.25  # Position cylinder at 1/4 domain
+    y_center: 0.5
+    invert: true
+    tolerance: 1
+
+  forcing:
+    function: local_cosines
+    A: [-0.5]
+    kx: [1.0]
+    ky: [1.0]
+    cx: [0.5]
+    cy: [0.5]
+    w: 0.0
+    sigma: [0.04]
