@@ -2,7 +2,7 @@ from qg.solver.util import _Math
 
 from qg.solver.opt.operator.jacobian import jacobian_pq
 from qg.solver.opt.operator.obstacle import solve_mask, brinkman_no_slip_penalty, brinkman_friction_slip_penalty, brinkman_friction_slip_w_pot_penalty
-from qg.solver.opt.operator.vortex import vortex_stretching
+# from qg.solver.opt.operator.vortex import vortex_stretching
 
 def define_explicit_operator(param, grid, derivative, logger, args, sources, **kwargs):
     patches = []
