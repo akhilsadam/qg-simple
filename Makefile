@@ -10,7 +10,7 @@ test:
 # Quick test (small grid, offline)
 test-generate: install
 	python -m qg.train \
-		scenario=decaying_turbulence \
+		scenario=forced_turbulence \
 		qg.grid.Nx=128 \
 		qg.grid.Ny=128 \
 		qg.ic.n_batch=1 \
